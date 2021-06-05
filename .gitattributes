@@ -1,0 +1,6 @@
+*.gr filter=lfs diff=lfs merge=lfs -text
+*.cflp filter=lfs diff=lfs merge=lfs -text
+*.dig filter=lfs diff=lfs merge=lfs -text
+*.steiner filter=lfs diff=lfs merge=lfs -text
+*.vertexcover filter=lfs diff=lfs merge=lfs -text
+*.tour filter=lfs diff=lfs merge=lfs -text
