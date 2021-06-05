@@ -1,0 +1,29 @@
+cmake_minimum_required(VERSION 3.15)
+
+project(LAB-MC658
+        VERSION     1.0
+        LANGUAGES   CXX)
+
+set(CMAKE_CXX_STANDARD 11)
+
+# Set a default build type if none was specified
+set(default_build_type "Release")
+
+# Headers directories
+include_directories("include")
+include_directories("lemon/lemon-1.3.1/include")
+
+# Utils used in all targets
+add_library(MY_LIB src/mygraphlib.cpp src/geompack.cpp src/myutils.cpp src/mycolor.cpp src/deprecated.cpp)
+
+# Lemon lib directory
+link_directories(${CMAKE_SOURCE_DIR}/lemon/lemon-1.3.1/lib)
+
+# Compiler flags
+set(CMAKE_CXX_FLAGS "-m64 -O2 -Wall -std=c++11 -D_GLIBCXX_USE_CXX11_ABI=0 -Wunused-local-typedefs -lemon")
+
+# Target executable and linking
+add_executable(pickup_delivery src/ex_pickup_delivery.cpp)
+target_link_libraries(pickup_delivery m)
+target_link_libraries(pickup_delivery pthread)
+target_link_libraries(pickup_delivery MY_LIB)
