@@ -77,6 +77,42 @@ void PrintSolution(Pickup_Delivery_Instance &P, DNodeVector &Sol,
   cout << endl;
 }
 
+void graph_pruning(Digraph &g, const DNode &source, const DNode &target,
+                   const int &npairs, const DNodeVector &pickup,
+                   const DNodeVector &delivery) {
+  cout << "Limpa arcos inválidos:" << endl;
+  cout << "Arcos antes da limpeza: " << countArcs(g) << endl;
+  // pickup[i] -> target (the last one before the target must be a delivery)
+  // pickup[i] -> source (cannot go back to the source)
+  for (int i = 0; i < npairs; i++)
+    for (OutArcIt a(g, pickup[i]); a != INVALID; ++a)
+      if (g.target(a) == target or g.target(a) == source)
+        g.erase(a);
+  // delivery[i] -> pickup[i] (a pickup is always before the corresponding delivery)
+  // delivery[i] -> source (cannot go back to the source)
+  // source -> delivery[i] (the second one after the source must be a pickup)
+  for (int i = 0; i < npairs; i++) {
+    for (OutArcIt a(g, delivery[i]); a != INVALID; ++a)
+      if (g.target(a) == pickup[i] or g.target(a) == source)
+        g.erase(a);
+    for (InArcIt a(g, delivery[i]); a != INVALID; ++a)
+      if (g.source(a) == source) {
+        g.erase(a);
+        break;
+      }
+  }
+  // target -> v, for all nodes (target is the last node)
+  for (OutArcIt a(g, target); a != INVALID; ++a)
+    g.erase(a);
+  // source -> target (the pickup/deliveries must be in the middle)
+  for (OutArcIt a(g, source); a != INVALID; ++a)
+    if (g.target(a) == target) {
+      g.erase(a);
+      break;
+    }
+  cout << "Arcos depois da limpeza: " << countArcs(g) << endl;
+}
+
 bool ReadPickupDeliveryDigraph(const string &filename, Digraph &g,
                                DNodeStringMap &vname, DNodePosMap &posx,
                                DNodePosMap &posy, ArcValueMap &weight,
@@ -105,13 +141,10 @@ bool ReadPickupDeliveryDigraph(const string &filename, Digraph &g,
     pickup[i] = DN[2 * i + 2];
     delivery[i] = DN[2 * i + 3];
   }
+
+  // Remove invalid arcs (7n + 2):
+  graph_pruning(g, source, target, npairs, pickup, delivery);
   return true;
-}
-
-double sqr(double a) { return (a * a); }
-
-double dist(Pickup_Delivery_Instance &P, DNode u, DNode v) {
-  return sqrt(sqr(P.px[u] - P.py[v]) + sqr(P.px[v] - P.py[v]));
 }
 
 // Heuristica apenas para testar a visualizacao das solucoes.
@@ -170,8 +203,7 @@ bool ViewPickupDeliverySolution(Pickup_Delivery_Instance &P, double &LB,
   GA.SetAttrib(P.source, "shape=box");
   GA.SetAttrib(P.target, "shape=box");
 
-  if (P.npairs <=
-      16) { // se tiver poucos pares, dah para pintar os pares de mesma cor.
+  if (P.npairs <= 16) { // se tiver poucos pares, dah para pintar os pares de mesma cor.
     for (int i = 0; i < P.npairs; i++) { // pinta
       GA.SetColor(P.pickup[i], ith_VisualDistinctColorName(i));
       GA.SetColor(P.delivery[i], ith_VisualDistinctColorName(i));
@@ -250,6 +282,7 @@ int main(int argc, char *argv[]) {
   if (!ReadPickupDeliveryDigraph(digraph_filename, g, vname, px, py, weight,
                                  source, target, npairs, pickup, delivery)) {
     cout << "Erro na leitura do grafo de entrada." << endl;
+    exit(EXIT_FAILURE);
   }
 
   Pickup_Delivery_Instance P(g, vname, px, py, weight, source, target, npairs,
