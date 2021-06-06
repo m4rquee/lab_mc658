@@ -148,34 +148,19 @@ bool ReadPickupDeliveryDigraph(const string &filename, Digraph &g,
 }
 
 // Heuristica apenas para testar a visualizacao das solucoes.
-bool HeuristicaConstrutivaBoba(Pickup_Delivery_Instance &P, int time_limit,
-                               double &LB, double &UB, DNodeVector &Sol) {
+bool dummy_heuristic(Pickup_Delivery_Instance &P, int time_limit, double &LB,
+                     double &UB, DNodeVector &Sol) {
   cout << "Execucao da Heuristica Boba" << endl;
   cout << "\tEsta rotina deveria respeitar o tempo de no maximo " << time_limit
        << " segundos" << endl;
-  cout << "\tProvavelmente a solucao eh inviavel, pois mistura as coletas e "
-          "entregas."
-       << endl;
   if (UB == MY_INF) { // Faz alguma coisa so' se ainda nao tem solucao
     Sol.resize(P.nnodes);
     Sol[0] = P.source; // insere o source
     for (int i = 0; i < P.npairs; i++)
-      Sol[i + 1] = P.pickup[i]; // insere os pickup
+      Sol[2 * i + 1] = P.pickup[i]; // insere os pickup
     for (int i = 0; i < P.npairs; i++)
-      Sol[P.npairs + i + 1] = P.delivery[i]; // insere os delivery
-    Sol[2 * P.npairs + 1] = P.target;        // insere o target.
-
-    // Ordena os vertices, exceto pelo source e target, do mais baixo para mais
-    // alto
-    int primeiro = 1, ultimo = 2 * P.npairs;
-    for (int i = primeiro; i < ultimo; i++)
-      for (int j = i + 1; j <= ultimo; j++)
-        if (P.py[Sol[i]] > P.py[Sol[j]]) {
-          DNode aux;
-          aux = Sol[i];
-          Sol[i] = Sol[j];
-          Sol[j] = aux;
-        }
+      Sol[2 * i + 2] = P.delivery[i]; // insere os delivery
+    Sol[2 * P.npairs + 1] = P.target; // insere o target.
 
     // Atualiza o UB (Upper Bound) que eh o valor da solucao
     UB = 0.0;
@@ -226,9 +211,7 @@ bool ViewPickupDeliverySolution(Pickup_Delivery_Instance &P, double &LB,
 
 bool Lab1(Pickup_Delivery_Instance &P, int time_limit, double &LB, double &UB,
           DNodeVector &Sol) {
-  // Apague a chamada abaixo e escreva a codificacao da sua rotina relativa ao
-  // Laboratorio 1.
-  return HeuristicaConstrutivaBoba(P, time_limit, LB, UB, Sol);
+  return dummy_heuristic(P, time_limit, LB, UB, Sol);
 }
 
 int main(int argc, char *argv[]) {
