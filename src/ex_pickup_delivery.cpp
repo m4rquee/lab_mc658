@@ -268,8 +268,12 @@ bool ViewPickupDeliverySolution(Pickup_Delivery_Instance &P, double &LB,
     GA.SetColor(a, "Invis");
   GA.SetColor(P.source, "Red"); // source and target are painted in White
   GA.SetColor(P.target, "Red");
-  GA.SetAttrib(P.source, "shape=box");
-  GA.SetAttrib(P.target, "shape=box");
+  GA.SetShape(P.source, "star");
+  GA.SetShape(P.target, "star");
+
+  for (int i = 0; i < P.npairs; i++) { // distinguish the pickup
+    GA.SetShape(P.pickup[i], "box");
+  }
 
   if (P.npairs <= 16) { // se tiver poucos pares, dah para pintar os pares de mesma cor.
     for (int i = 0; i < P.npairs; i++) { // pinta
@@ -281,7 +285,7 @@ bool ViewPickupDeliverySolution(Pickup_Delivery_Instance &P, double &LB,
     // pinta o arco Sol[i-1] -->  Sol[i]
     for (OutArcIt a(P.g, Sol[i - 1]); a != INVALID; ++a)
       if (P.g.target(a) == Sol[i]) {
-        GA.SetColor(a, "Red");
+        GA.SetColor(a, "Black");
         break;
       }
   }
