@@ -13,6 +13,7 @@
 #include <lemon/concepts/digraph.h>
 #include <lemon/list_graph.h>
 #include <lemon/preflow.h>
+#include <lemon/min_cost_arborescence.h>
 #include <queue>
 #include <string>
 
@@ -21,7 +22,7 @@ using namespace std;
 
 typedef vector<DNode> DNodeVector;
 
-int cutcount = 0;
+#define EPS 2.0
 
 // Pickup_Delivery_Instance put all relevant information in one class.
 class Pickup_Delivery_Instance {
@@ -30,7 +31,8 @@ public:
                            DNodePosMap &posx, DNodePosMap &posy,
                            ArcValueMap &eweight, DNode &sourcenode,
                            DNode &targetnode, int &npairs, DNodeVector &pickup,
-                           DNodeVector &delivery);
+                           DNodeVector &delivery,
+                           Digraph::NodeMap<DNode> &del_pickup);
   Digraph &g;
   DNodeStringMap &vname;
   DNodePosMap &px;
@@ -42,16 +44,17 @@ public:
   int npairs;
   DNodeVector &pickup;
   DNodeVector &delivery;
+  Digraph::NodeMap<DNode> &del_pickup;
 };
 
 Pickup_Delivery_Instance::Pickup_Delivery_Instance(
     Digraph &graph, DNodeStringMap &vvname, DNodePosMap &posx,
     DNodePosMap &posy, ArcValueMap &eweight, DNode &sourcenode,
     DNode &targetnode, int &vnpairs, DNodeVector &vpickup,
-    DNodeVector &vdelivery)
+    DNodeVector &vdelivery, Digraph::NodeMap<DNode> &del_pickup)
     : g(graph), vname(vvname), px(posx), py(posy), weight(eweight),
       source(sourcenode), target(targetnode), npairs(vnpairs), pickup(vpickup),
-      delivery(vdelivery) {
+      delivery(vdelivery), del_pickup(del_pickup) {
   nnodes = countNodes(g);
 }
 
@@ -117,7 +120,8 @@ bool ReadPickupDeliveryDigraph(const string &filename, Digraph &g,
                                DNodeStringMap &vname, DNodePosMap &posx,
                                DNodePosMap &posy, ArcValueMap &weight,
                                DNode &source, DNode &target, int &npairs,
-                               DNodeVector &pickup, DNodeVector &delivery) {
+                               DNodeVector &pickup, DNodeVector &delivery,
+                               Digraph::NodeMap<DNode> &del_pickup) {
   ReadDigraph(filename, g, vname, posx, posy, weight);
   int n = countNodes(g);
   DNode DN[n];
@@ -140,11 +144,23 @@ bool ReadPickupDeliveryDigraph(const string &filename, Digraph &g,
   for (i = 0; i < npairs; i++) {
     pickup[i] = DN[2 * i + 2];
     delivery[i] = DN[2 * i + 3];
+    del_pickup[delivery[i]] = pickup[i]; // map a delivery to it's pickup
   }
 
   // Remove invalid arcs (7n + 2):
   graph_pruning(g, source, target, npairs, pickup, delivery);
   return true;
+}
+
+double route_cost(const Pickup_Delivery_Instance &P, const DNodeVector &Sol) {
+  double cost = 0.0;
+  for (int i = 1; i < P.nnodes; i++)
+    for (OutArcIt a(P.g, Sol[i - 1]); a != INVALID; ++a)
+      if (P.g.target(a) == Sol[i]) {
+        cost += P.weight[a];
+        break;
+      }
+  return cost;
 }
 
 // Heuristica apenas para testar a visualizacao das solucoes.
@@ -163,16 +179,83 @@ bool dummy_heuristic(Pickup_Delivery_Instance &P, int time_limit, double &LB,
     Sol[2 * P.npairs + 1] = P.target; // insere o target.
 
     // Atualiza o UB (Upper Bound) que eh o valor da solucao
-    UB = 0.0;
-    for (int i = 1; i < P.nnodes; i++)
-      for (OutArcIt a(P.g, Sol[i - 1]); a != INVALID; ++a)
-        if (P.g.target(a) == Sol[i]) {
-          UB += P.weight[a];
-          break;
-        }
+    UB = route_cost(P, Sol);
   }
   cout << endl;
   return true;
+}
+
+void _arborescence_transversal(Pickup_Delivery_Instance &P,
+    MinCostArborescence<Digraph, ArcValueMap> &solver, DNodeVector &Sol,
+    DNode &currNode, DCutMap &visited, map<DNode, bool> &p_visited, int pos) {
+  Sol[pos] = currNode; // save the current node to the route
+  if (pos == P.nnodes - 2) return; // if is in the last node before the target
+
+  visited[currNode] = true;
+  if (p_visited.count(currNode)) // mark the currNode if it's a pickup
+    p_visited[currNode] = true;
+
+  // Min arc over all neighbours:
+  DNode min_next;
+  double min_cost = MY_INF;
+  // Min arc over all neighbours, restricted to the arborescence arcs:
+  DNode min_next_arb;
+  double min_cost_arb = MY_INF;
+
+  for (OutArcIt a(P.g, currNode); a != INVALID; ++a) {
+    DNode next = P.g.target(a);
+    bool is_pickup = p_visited.count(next);
+    if (!visited[next] && next != P.target) // the target is always the last node
+      // Can only go to next if it's a pickup or it's corresponding pickup has
+      // already been visited:
+      if (is_pickup || p_visited[P.del_pickup[next]]) {
+        if (P.weight[a] < min_cost) { // min arc over all neighbours
+          min_next = next;
+          min_cost = P.weight[a];
+        }
+        if (P.weight[a] < min_cost_arb && solver.arborescence(a)) { // restricted min
+          min_next_arb = next;
+          min_cost_arb = P.weight[a];
+        }
+      }
+  }
+
+  // Choose the min arc giving preference to the restricted one:
+  DNode &nextNode = min_next;
+  if (min_cost_arb != MY_INF && min_cost_arb <= min_cost * EPS)
+    nextNode = min_next_arb;
+  _arborescence_transversal(P, solver, Sol, nextNode, visited, p_visited, ++pos);
+}
+
+double arborescence_transversal(Pickup_Delivery_Instance &P, DNodeVector &Sol,
+                         MinCostArborescence<Digraph, ArcValueMap> &solver) {
+  // Starts the solution:
+  Sol.resize(P.nnodes);
+  Sol[P.nnodes - 1] = P.target;
+
+  map<DNode, bool> p_visited; // if each pickup has already been visited
+  for (const auto &key : P.pickup) p_visited[key] = false; // init the map
+  DCutMap visited(P.g, false); // if each node has already been visited
+
+  // Transverse the graph from the source greedily guided by the arborescence:
+  _arborescence_transversal(P, solver, Sol, P.source, visited, p_visited, 0);
+  return route_cost(P, Sol); // Calculate the route cost
+}
+
+bool arborescence_heuristic(Pickup_Delivery_Instance &P, int time_limit, double &LB,
+                            double &UB, DNodeVector &Sol) {
+  // Generates the arborescence that will guide the route creation:
+  MinCostArborescence<Digraph, ArcValueMap> solver(P.g, P.weight);
+  solver.run(P.source); // rot the arborescence in the source
+  // As a spanning digraph roted at the source this is itself a LB:
+  LB = solver.arborescenceCost();
+
+  double newUB = arborescence_transversal(P, Sol, solver);
+  if (newUB < UB) { // check if this is a better solution
+    UB = newUB;
+    return true;
+  }
+  return false;
 }
 
 bool ViewPickupDeliverySolution(Pickup_Delivery_Instance &P, double &LB,
@@ -211,7 +294,8 @@ bool ViewPickupDeliverySolution(Pickup_Delivery_Instance &P, double &LB,
 
 bool Lab1(Pickup_Delivery_Instance &P, int time_limit, double &LB, double &UB,
           DNodeVector &Sol) {
-  return dummy_heuristic(P, time_limit, LB, UB, Sol);
+  // return dummy_heuristic(P, time_limit, LB, UB, Sol);
+  return arborescence_heuristic(P, time_limit, LB, UB, Sol);
 }
 
 int main(int argc, char *argv[]) {
@@ -227,6 +311,7 @@ int main(int argc, char *argv[]) {
   ArcValueMap weight(g);    // edge weights
   vector<DNode> V;
   DNode sourcenode, targetnode;
+  Digraph::NodeMap<DNode> del_pickup(g); // map a delivery to it's pickup
   int seed = 0;
   srand48(seed);
 
@@ -263,13 +348,14 @@ int main(int argc, char *argv[]) {
   int npairs;
 
   if (!ReadPickupDeliveryDigraph(digraph_filename, g, vname, px, py, weight,
-                                 source, target, npairs, pickup, delivery)) {
+                                 source, target, npairs, pickup, delivery,
+                                 del_pickup)) {
     cout << "Erro na leitura do grafo de entrada." << endl;
     exit(EXIT_FAILURE);
   }
 
   Pickup_Delivery_Instance P(g, vname, px, py, weight, source, target, npairs,
-                             pickup, delivery);
+                             pickup, delivery, del_pickup);
   PrintInstanceInfo(P);
 
   double LB = 0, UB = MY_INF; // considere MY_INF como infinito.
