@@ -296,12 +296,33 @@ bool ViewPickupDeliverySolution(Pickup_Delivery_Instance &P, double &LB,
   return true;
 }
 
+double *ordered_edge_prefix_sum(Pickup_Delivery_Instance &P) {
+  // Init a min heap to sort the elements:
+  priority_queue<double, vector<double>, greater<double>> queue;
+  for (ArcIt a(P.g); a != INVALID; ++a)
+    queue.push(P.weight[a]);
+
+  // Make a prefix sum of the nnodes-1 min arcs (used as an upper bound latter):
+  auto p_sum = new double[P.nnodes - 1];
+  p_sum[0] = queue.top();
+  queue.pop();
+  for (int i = 1; i < P.nnodes - 1; i++, queue.pop())
+    p_sum[i] = p_sum[i - 1] + queue.top();
+  return p_sum;
+}
+
+
 void _exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
-                    double &UB, DNodeVector &Sol) {
+                    double &UB, DNodeVector &Sol, double *p_sum) {
 }
 
 void exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
                     double &UB, DNodeVector &Sol) {
+  map<DNode, bool> p_visited; // if each pickup has already been visited
+  for (const auto &key : P.pickup) p_visited[key] = false; // init the map
+  DCutMap visited(P.g, false); // if each node has already been visited
+  double *p_sum = ordered_edge_prefix_sum(P); // used to bound the branching
+  _exact_solution(P, time_limit, LB, UB, Sol, p_sum);
 }
 
 bool Lab1(Pickup_Delivery_Instance &P, int time_limit, double &LB, double &UB,
