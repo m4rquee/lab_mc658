@@ -229,10 +229,6 @@ void _arborescence_transversal(Pickup_Delivery_Instance &P,
 
 double arborescence_transversal(Pickup_Delivery_Instance &P, DNodeVector &Sol,
                          MinCostArborescence<Digraph, ArcValueMap> &solver) {
-  // Starts the solution:
-  Sol.resize(P.nnodes);
-  Sol[P.nnodes - 1] = P.target;
-
   map<DNode, bool> p_visited; // if each pickup has already been visited
   for (const auto &key : P.pickup) p_visited[key] = false; // init the map
   DCutMap visited(P.g, false); // if each node has already been visited
@@ -250,6 +246,9 @@ bool arborescence_heuristic(Pickup_Delivery_Instance &P, int time_limit, double 
   // As a spanning digraph roted at the source this is itself a LB:
   LB = solver.arborescenceCost();
 
+  // Starts the solution:
+  Sol.resize(P.nnodes);
+  Sol[P.nnodes - 1] = P.target;
   double newUB = arborescence_transversal(P, Sol, solver);
   if (newUB < UB) { // check if this is a better solution
     UB = newUB;
@@ -296,10 +295,20 @@ bool ViewPickupDeliverySolution(Pickup_Delivery_Instance &P, double &LB,
   return true;
 }
 
+void _exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
+                    double &UB, DNodeVector &Sol) {
+}
+
+void exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
+                    double &UB, DNodeVector &Sol) {
+}
+
 bool Lab1(Pickup_Delivery_Instance &P, int time_limit, double &LB, double &UB,
           DNodeVector &Sol) {
-  // return dummy_heuristic(P, time_limit, LB, UB, Sol);
-  return arborescence_heuristic(P, time_limit, LB, UB, Sol);
+  // bool improved = dummy_heuristic(P, time_limit, LB, UB, Sol);
+  bool improved = arborescence_heuristic(P, time_limit, LB, UB, Sol);
+  exact_solution(P, time_limit, LB, UB, Sol);
+  return improved;
 }
 
 int main(int argc, char *argv[]) {
