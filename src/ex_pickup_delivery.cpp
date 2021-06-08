@@ -205,19 +205,18 @@ void _arborescence_transversal(Pickup_Delivery_Instance &P,
   for (OutArcIt a(P.g, currNode); a != INVALID; ++a) {
     DNode next = P.g.target(a);
     bool is_pickup = p_visited.count(next);
-    if (!visited[next] && next != P.target) // the target is always the last node
-      // Can only go to next if it's a pickup or it's corresponding pickup has
-      // already been visited:
-      if (is_pickup || p_visited[P.del_pickup[next]]) {
-        if (P.weight[a] < min_cost) { // min arc over all neighbours
-          min_next = next;
-          min_cost = P.weight[a];
-        }
-        if (P.weight[a] < min_cost_arb && solver.arborescence(a)) { // restricted min
-          min_next_arb = next;
-          min_cost_arb = P.weight[a];
-        }
+    // Can only go to next if not visited, and it's a pickup or it's
+    // corresponding pickup has already been visited:
+    if (!visited[next] && (is_pickup || p_visited[P.del_pickup[next]])) {
+      if (P.weight[a] < min_cost) { // min arc over all neighbours
+        min_next = next;
+        min_cost = P.weight[a];
       }
+      if (P.weight[a] < min_cost_arb && solver.arborescence(a)) { // restricted min
+        min_next_arb = next;
+        min_cost_arb = P.weight[a];
+      }
+    }
   }
 
   // Choose the min arc giving preference to the restricted one:
@@ -233,6 +232,10 @@ double arborescence_transversal(Pickup_Delivery_Instance &P, DNodeVector &Sol,
   for (const auto &key : P.pickup) p_visited[key] = false; // init the map
   DCutMap visited(P.g, false); // if each node has already been visited
 
+  // The target is always the last node:
+  Sol[P.nnodes - 1] = P.target;
+  visited[P.target] = true;
+
   // Transverse the graph from the source greedily guided by the arborescence:
   _arborescence_transversal(P, solver, Sol, P.source, visited, p_visited, 0);
   return route_cost(P, Sol); // Calculate the route cost
@@ -246,9 +249,7 @@ bool arborescence_heuristic(Pickup_Delivery_Instance &P, int time_limit, double 
   // As a spanning digraph roted at the source this is itself a LB:
   LB = solver.arborescenceCost();
 
-  // Starts the solution:
-  Sol.resize(P.nnodes);
-  Sol[P.nnodes - 1] = P.target;
+  Sol.resize(P.nnodes); // starts the solution vector
   double newUB = arborescence_transversal(P, Sol, solver);
   if (newUB < UB) { // check if this is a better solution
     UB = newUB;
