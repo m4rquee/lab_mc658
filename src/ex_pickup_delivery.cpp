@@ -32,7 +32,7 @@ struct ArcCmp : public binary_function<Arc, Arc, bool> {
 
   _GLIBCXX14_CONSTEXPR
   inline bool operator()(const Arc &x, const Arc &y) const {
-    return weight[x] < weight[y];
+    return weight[x] > weight[y]; // acceding order
   }
 };
 
@@ -234,7 +234,7 @@ void _arborescence_transversal(Pickup_Delivery_Instance &P, MinCostArb &solver,
   DNode min_next_arb;
   double min_cost_arb = MY_INF;
 
-  for (OutArcIt a(P.g, currNode); a != INVALID; ++a) {
+  for (const Arc &a : P.ordered_arcs[currNode]) {
     DNode next = P.g.target(a);
     bool is_pickup = p_visited.count(next);
     // Can only go to next if not visited, and it's a pickup or it's
@@ -247,6 +247,7 @@ void _arborescence_transversal(Pickup_Delivery_Instance &P, MinCostArb &solver,
       if (P.weight[a] < min_cost_arb && solver.arborescence(a)) { // restricted min
         min_next_arb = next;
         min_cost_arb = P.weight[a];
+        break; // the arcs are sorted, so the first one is the minimum
       }
     }
   }
@@ -364,7 +365,7 @@ void _exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
     return;
   }
 
-  for (OutArcIt a(P.g, currNode); a != INVALID; ++a) { // TODO: Order by weight
+  for (const Arc &a : P.ordered_arcs[currNode]) {
     DNode next = P.g.target(a);
     bool is_pickup = p_visited.count(next);
     // Can only go to next if not visited, and it's a pickup or it's
