@@ -24,6 +24,9 @@ typedef vector<DNode> DNodeVector;
 
 #define EPS 2.0
 
+typedef MinCostArborescence<Digraph, ArcValueMap> MinCostArb;
+typedef priority_queue<double, vector<double>, greater<double>> min_heap;
+
 // Pickup_Delivery_Instance put all relevant information in one class.
 class Pickup_Delivery_Instance {
 public:
@@ -185,12 +188,14 @@ bool dummy_heuristic(Pickup_Delivery_Instance &P, int time_limit, double &LB,
   return true;
 }
 
-void _arborescence_transversal(Pickup_Delivery_Instance &P,
-    MinCostArborescence<Digraph, ArcValueMap> &solver, DNodeVector &Sol,
-    DNode &currNode, DCutMap &visited, map<DNode, bool> &p_visited, int pos) {
-  Sol[pos] = currNode; // save the current node to the route
+void _arborescence_transversal(Pickup_Delivery_Instance &P, MinCostArb &solver,
+                               DNodeVector &Sol, DNode &currNode,
+                               DNodeBoolMap &visited,
+                               map<DNode, bool> &p_visited, int pos) {
+  Sol[pos] = currNode;             // save the current node to the route
   if (pos == P.nnodes - 2) return; // if is in the last node before the target
 
+  // Mark as visited:
   visited[currNode] = true;
   if (p_visited.count(currNode)) // mark the currNode if it's a pickup
     p_visited[currNode] = true;
@@ -227,10 +232,10 @@ void _arborescence_transversal(Pickup_Delivery_Instance &P,
 }
 
 double arborescence_transversal(Pickup_Delivery_Instance &P, DNodeVector &Sol,
-                         MinCostArborescence<Digraph, ArcValueMap> &solver) {
+                                MinCostArb &solver) {
   map<DNode, bool> p_visited; // if each pickup has already been visited
   for (const auto &key : P.pickup) p_visited[key] = false; // init the map
-  DCutMap visited(P.g, false); // if each node has already been visited
+  DNodeBoolMap visited(P.g, false); // if each node has already been visited
 
   // The target is always the last node:
   Sol[P.nnodes - 1] = P.target;
@@ -242,13 +247,7 @@ double arborescence_transversal(Pickup_Delivery_Instance &P, DNodeVector &Sol,
 }
 
 bool arborescence_heuristic(Pickup_Delivery_Instance &P, int time_limit, double &LB,
-                            double &UB, DNodeVector &Sol) {
-  // Generates the arborescence that will guide the route creation:
-  MinCostArborescence<Digraph, ArcValueMap> solver(P.g, P.weight);
-  solver.run(P.source); // rot the arborescence in the source
-  // As a spanning digraph roted at the source this is itself a LB:
-  LB = solver.arborescenceCost();
-
+                            double &UB, DNodeVector &Sol, MinCostArb &solver) {
   Sol.resize(P.nnodes); // starts the solution vector
   double newUB = arborescence_transversal(P, Sol, solver);
   if (newUB < UB) { // check if this is a better solution
@@ -296,11 +295,12 @@ bool ViewPickupDeliverySolution(Pickup_Delivery_Instance &P, double &LB,
   return true;
 }
 
-double *ordered_edge_prefix_sum(Pickup_Delivery_Instance &P) {
+double *ordered_edge_prefix_sum(Pickup_Delivery_Instance &P, MinCostArb &solver) {
   // Init a min heap to sort the elements:
-  priority_queue<double, vector<double>, greater<double>> queue;
+  min_heap queue;
   for (ArcIt a(P.g); a != INVALID; ++a)
-    queue.push(P.weight[a]);
+    if (solver.arborescence(a)) // restricted arcs to increase the bounds
+      queue.push(P.weight[a]);
 
   // Make a prefix sum of the nnodes-1 min arcs (used as an upper bound latter):
   auto p_sum = new double[P.nnodes - 1];
@@ -311,25 +311,92 @@ double *ordered_edge_prefix_sum(Pickup_Delivery_Instance &P) {
   return p_sum;
 }
 
-
 void _exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
-                    double &UB, DNodeVector &Sol, double *p_sum) {
+                     double &UB, DNodeVector &currSol, DNodeVector &bestSol,
+                     double *p_sum, DNode &currNode, DNodeBoolMap &visited,
+                     map<DNode, bool> &p_visited, int pos, double curr_weight) {
+  // Debug message:
+  if (pos < 3) cout << "-> nó " << P.vname[currNode] << " - nível " << pos << endl;
+
+  currSol[pos] = currNode; // save the current node to the route
+  // Evaluate the newly created route when it's done:
+  if (pos == P.nnodes - 2) {
+    // Add the last arc weight:
+    for (OutArcIt a(P.g, currNode); a != INVALID; ++a)
+      if (P.g.target(a) == P.target) {
+        curr_weight += P.weight[a];
+        break;
+      }
+    // Test if it's the new best solution:
+    if (curr_weight < UB) {
+      UB = curr_weight;
+      bestSol = currSol;
+      PrintSolution(P, bestSol, "Novo UB.");
+      cout << "custo: " << UB << endl;
+    }
+    return;
+  }
+
+  for (OutArcIt a(P.g, currNode); a != INVALID; ++a) { // TODO: Order by weight
+    DNode next = P.g.target(a);
+    bool is_pickup = p_visited.count(next);
+    // Can only go to next if not visited, and it's a pickup or it's
+    // corresponding pickup has already been visited:
+    if (!visited[next] && (is_pickup || p_visited[P.del_pickup[next]])) {
+      visited[next] = true;
+      if (is_pickup) p_visited[next] = true;
+
+      int remaining_arcs = P.nnodes - pos - 2; // used pos + 1 arcs already
+      double min_weight_for_remaining_arcs = p_sum[remaining_arcs - 1];
+      double new_weight = curr_weight + P.weight[a];
+      // Bound:
+      if (new_weight < UB - min_weight_for_remaining_arcs) // branch only if can improve
+        // Branch:
+        _exact_solution(P, time_limit, LB, UB, currSol, bestSol, p_sum, next,
+                        visited, p_visited, pos + 1, new_weight);
+
+      if (LB == UB) return; // found an optimal solution
+      if (is_pickup) p_visited[next] = false;
+      visited[next] = false;
+    }
+  }
 }
 
 void exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
-                    double &UB, DNodeVector &Sol) {
+                    double &UB, DNodeVector &Sol, MinCostArb &solver) {
   map<DNode, bool> p_visited; // if each pickup has already been visited
   for (const auto &key : P.pickup) p_visited[key] = false; // init the map
-  DCutMap visited(P.g, false); // if each node has already been visited
-  double *p_sum = ordered_edge_prefix_sum(P); // used to bound the branching
-  _exact_solution(P, time_limit, LB, UB, Sol, p_sum);
+  DNodeBoolMap visited(P.g, false); // if each node has already been visited
+  double *p_sum = ordered_edge_prefix_sum(P, solver); // used to bound the branching
+
+  // The target is always the last node:
+  DNodeVector currSol(P.nnodes);
+  currSol[P.nnodes - 1] = P.target;
+
+  // Mark the source/target as visited to block visiting them in the search:
+  visited[P.source] = true;
+  visited[P.target] = true;
+
+  _exact_solution(P, time_limit, LB, UB, currSol, Sol, p_sum, P.source, visited,
+                  p_visited, 0, 0);
 }
 
 bool Lab1(Pickup_Delivery_Instance &P, int time_limit, double &LB, double &UB,
           DNodeVector &Sol) {
   // bool improved = dummy_heuristic(P, time_limit, LB, UB, Sol);
-  bool improved = arborescence_heuristic(P, time_limit, LB, UB, Sol);
-  exact_solution(P, time_limit, LB, UB, Sol);
+
+  // Generates the arborescence that will guide the route creation:
+  MinCostArb arb_solver(P.g, P.weight);
+  arb_solver.run(P.source); // root the arborescence in the source
+  // As a spanning digraph rooted at the source this is itself a LB:
+  LB = arb_solver.arborescenceCost();
+
+  bool improved =
+      arborescence_heuristic(P, time_limit, LB, UB, Sol, arb_solver);
+  PrintSolution(P, Sol, "Solução inicial depois da heuristica.");
+  cout << "custo: " << UB << endl << endl;
+  exact_solution(P, time_limit, LB, UB, Sol, arb_solver);
+  LB = UB; // After testing all possibilities the Sol must be optimal
   return improved;
 }
 
@@ -401,6 +468,7 @@ int main(int argc, char *argv[]) {
   if (melhorou) {
     ViewPickupDeliverySolution(P, LB, UB, Solucao, "Solucao do Lab.");
     PrintSolution(P, Solucao, "Solucao do Lab1.");
+    cout << "custo: " << UB << endl;
   }
   return 0;
 }
