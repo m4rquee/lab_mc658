@@ -24,8 +24,21 @@ typedef vector<DNode> DNodeVector;
 
 #define EPS 2.0
 
+// Compares two arcs based upon their weights:
+struct ArcCmp : public binary_function<Arc, Arc, bool> {
+  ArcValueMap &weight;
+
+  explicit ArcCmp(ArcValueMap &weight) : weight(weight) {}
+
+  _GLIBCXX14_CONSTEXPR
+  inline bool operator()(const Arc &x, const Arc &y) const {
+    return weight[x] < weight[y];
+  }
+};
+
 typedef MinCostArborescence<Digraph, ArcValueMap> MinCostArb;
 typedef priority_queue<double, vector<double>, greater<double>> min_heap;
+typedef priority_queue<Arc, vector<Arc>, ArcCmp> min_arc_heap;
 
 // Pickup_Delivery_Instance put all relevant information in one class.
 class Pickup_Delivery_Instance {
@@ -48,6 +61,7 @@ public:
   DNodeVector &pickup;
   DNodeVector &delivery;
   Digraph::NodeMap<DNode> &del_pickup;
+  map<DNode, vector<Arc>> ordered_arcs;
 };
 
 Pickup_Delivery_Instance::Pickup_Delivery_Instance(
@@ -59,6 +73,19 @@ Pickup_Delivery_Instance::Pickup_Delivery_Instance(
       source(sourcenode), target(targetnode), npairs(vnpairs), pickup(vpickup),
       delivery(vdelivery), del_pickup(del_pickup) {
   nnodes = countNodes(g);
+
+  // Store the out arcs of each node sorted by weight:
+  ArcCmp arcCmp(weight);           // arc comparator based on this weight map
+  min_arc_heap sorting_heap(arcCmp); // aux heap used for sorting
+  for (DNodeIt n(g); n != INVALID; ++n) {
+    ordered_arcs[n].reserve(npairs);
+    for (OutArcIt a(g, n); a != INVALID; ++a) // add all out arcs to the heap
+      sorting_heap.push(a);
+    while (!sorting_heap.empty()) { // sort the arcs by popping the heap
+      ordered_arcs[n].push_back(sorting_heap.top());
+      sorting_heap.pop();
+    }
+  }
 }
 
 void PrintInstanceInfo(Pickup_Delivery_Instance &P) {
