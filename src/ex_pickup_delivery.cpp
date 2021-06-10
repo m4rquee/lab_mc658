@@ -48,7 +48,8 @@ public:
                            ArcValueMap &eweight, DNode &sourcenode,
                            DNode &targetnode, int &npairs, DNodeVector &pickup,
                            DNodeVector &delivery,
-                           Digraph::NodeMap<DNode> &del_pickup);
+                           Digraph::NodeMap<DNode> &del_pickup,
+                           DNodeBoolMap &is_pickup);
   Digraph &g;
   DNodeStringMap &vname;
   DNodePosMap &px;
@@ -62,16 +63,18 @@ public:
   DNodeVector &delivery;
   Digraph::NodeMap<DNode> &del_pickup;
   map<DNode, vector<Arc>> ordered_arcs;
+  DNodeBoolMap &is_pickup;
 };
 
 Pickup_Delivery_Instance::Pickup_Delivery_Instance(
     Digraph &graph, DNodeStringMap &vvname, DNodePosMap &posx,
     DNodePosMap &posy, ArcValueMap &eweight, DNode &sourcenode,
     DNode &targetnode, int &vnpairs, DNodeVector &vpickup,
-    DNodeVector &vdelivery, Digraph::NodeMap<DNode> &del_pickup)
+    DNodeVector &vdelivery, Digraph::NodeMap<DNode> &del_pickup,
+    DNodeBoolMap &is_pickup)
     : g(graph), vname(vvname), px(posx), py(posy), weight(eweight),
       source(sourcenode), target(targetnode), npairs(vnpairs), pickup(vpickup),
-      delivery(vdelivery), del_pickup(del_pickup) {
+      delivery(vdelivery), del_pickup(del_pickup), is_pickup(is_pickup) {
   nnodes = countNodes(g);
 
   // Store the out arcs of each node sorted by weight:
@@ -151,7 +154,8 @@ bool ReadPickupDeliveryDigraph(const string &filename, Digraph &g,
                                DNodePosMap &posy, ArcValueMap &weight,
                                DNode &source, DNode &target, int &npairs,
                                DNodeVector &pickup, DNodeVector &delivery,
-                               Digraph::NodeMap<DNode> &del_pickup) {
+                               Digraph::NodeMap<DNode> &del_pickup,
+                               DNodeBoolMap &is_pickup) {
   ReadDigraph(filename, g, vname, posx, posy, weight);
   int n = countNodes(g);
   DNode DN[n];
@@ -174,6 +178,7 @@ bool ReadPickupDeliveryDigraph(const string &filename, Digraph &g,
   for (i = 0; i < npairs; i++) {
     pickup[i] = DN[2 * i + 2];
     delivery[i] = DN[2 * i + 3];
+    is_pickup[pickup[i]] = true;
     del_pickup[delivery[i]] = pickup[i]; // map a delivery to it's pickup
   }
 
@@ -184,12 +189,16 @@ bool ReadPickupDeliveryDigraph(const string &filename, Digraph &g,
 
 double route_cost(const Pickup_Delivery_Instance &P, const DNodeVector &Sol) {
   double cost = 0.0;
-  for (int i = 1; i < P.nnodes; i++)
+  bool valid = false;
+  for (int i = 1; i < P.nnodes; i++, valid = false) {
     for (OutArcIt a(P.g, Sol[i - 1]); a != INVALID; ++a)
       if (P.g.target(a) == Sol[i]) {
         cost += P.weight[a];
+        valid = true;
         break;
       }
+    if (!valid) return MY_INF; // the route is invalid
+  }
   return cost;
 }
 
@@ -236,7 +245,7 @@ void _arborescence_transversal(Pickup_Delivery_Instance &P, MinCostArb &solver,
 
   for (const Arc &a : P.ordered_arcs[currNode]) {
     DNode next = P.g.target(a);
-    bool is_pickup = p_visited.count(next);
+    bool is_pickup = P.is_pickup[next];
     // Can only go to next if not visited, and it's a pickup or it's
     // corresponding pickup has already been visited:
     if (!visited[next] && (is_pickup || p_visited[P.del_pickup[next]])) {
@@ -376,7 +385,7 @@ bool _exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
 
   for (const Arc &a : P.ordered_arcs[currNode]) {
     DNode next = P.g.target(a);
-    bool is_pickup = p_visited.count(next);
+    bool is_pickup = P.is_pickup[next];
     // Can only go to next if not visited, and it's a pickup or it's
     // corresponding pickup has already been visited:
     if (!visited[next] && (is_pickup || p_visited[P.del_pickup[next]])) {
@@ -417,8 +426,9 @@ bool exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
   visited[P.target] = true;
 
   bool improved = false;
-  double bound = 1.15 * LB;
-  if (bound < UB) { // if the lower bound is too low tries to raise it
+  double bound = 1.2 * LB;
+  // If the lower bound is too low tries to raise it (only if is fast):
+  if (bound < UB and P.npairs <= 15) {
     cout << "Tenta melhorar o LB:" << endl;
     improved |= _exact_solution(P, time_limit, LB, UB, currSol, Sol, p_sum,
                                 P.source, visited, p_visited, 0, 0, bound);
@@ -435,6 +445,57 @@ bool exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
   return improved;
 }
 
+bool can_swap(Pickup_Delivery_Instance &P, DNodeVector &Sol, int i, int j) {
+  bool i_is_pickup = P.is_pickup[Sol[i]];
+  bool j_is_pickup = P.is_pickup[Sol[j]];
+  if (i_is_pickup and j_is_pickup)
+    for (int k = i + 1; k < j; k++)
+      if (!P.is_pickup[Sol[k]] and Sol[i] == P.del_pickup[Sol[k]])
+        return false; // i is delivered at k
+  if (i_is_pickup and !j_is_pickup) {
+    if (Sol[i] == P.del_pickup[Sol[j]]) return false; // i is delivered at j
+    for (int k = i + 1; k < j; k++)
+      if ((!P.is_pickup[Sol[k]] and Sol[i] == P.del_pickup[Sol[k]]) or
+          Sol[k] == P.del_pickup[Sol[j]])
+        return false; // i is delivered at k or k is delivered at j
+  }
+  if (!i_is_pickup and j_is_pickup)
+    return true; // no problem swapping
+  if (!i_is_pickup and !j_is_pickup)
+    for (int k = i + 1; k < j; k++)
+      if (Sol[k] == P.del_pickup[Sol[j]])
+        return false; // k is delivered at j
+  return true; // can swap the nodes
+}
+
+bool _local_search(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol) {
+  bool improved = false;
+  double new_cost;
+  int n = P.nnodes - 2;
+  for (int i = 1; i < n - 1; i++)
+    for (int j = i + 1; j < n - 1; j++)
+      if (can_swap(P, Sol, i, j)) {
+        swap(Sol[i], Sol[j]);
+        new_cost = route_cost(P, Sol);
+        if (new_cost < UB) { // found a better solution
+          improved = true;
+          UB = new_cost;
+          PrintSolution(P, Sol, "Novo UB.");
+          printf("custo: %05.5f - %02.2f%% ótimo\n", UB, 100 * LB / UB);
+        } else
+          swap(Sol[i], Sol[j]); // reset
+      }
+  return improved;
+}
+
+bool local_search(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol) {
+  bool improved = false, aux;
+  cout << "Fazendo uma busca local." << endl;
+  while ((aux = _local_search(P, LB, UB, Sol))) improved |= aux;
+  cout << endl;
+  return improved;
+}
+
 bool Lab1(Pickup_Delivery_Instance &P, int time_limit, double &LB, double &UB,
           DNodeVector &Sol) {
   // Generates the arborescence that will guide the route creation:
@@ -445,6 +506,9 @@ bool Lab1(Pickup_Delivery_Instance &P, int time_limit, double &LB, double &UB,
 
   bool improved =
       arborescence_heuristic(P, time_limit, LB, UB, Sol, arb_solver);
+
+  if (LB != UB) // if can improve
+    improved |= local_search(P, LB, UB, Sol);
 
   if (LB != UB) // if can improve
     improved |= exact_solution(P, time_limit, LB, UB, Sol, arb_solver);
@@ -466,6 +530,7 @@ int main(int argc, char *argv[]) {
   vector<DNode> V;
   DNode sourcenode, targetnode;
   Digraph::NodeMap<DNode> del_pickup(g); // map a delivery to it's pickup
+  DNodeBoolMap is_pickup(g, false); // used to quickly check if a node is a pickup
   int seed = 0;
   srand48(seed);
 
@@ -503,13 +568,13 @@ int main(int argc, char *argv[]) {
 
   if (!ReadPickupDeliveryDigraph(digraph_filename, g, vname, px, py, weight,
                                  source, target, npairs, pickup, delivery,
-                                 del_pickup)) {
+                                 del_pickup, is_pickup)) {
     cout << "Erro na leitura do grafo de entrada." << endl;
     exit(EXIT_FAILURE);
   }
 
   Pickup_Delivery_Instance P(g, vname, px, py, weight, source, target, npairs,
-                             pickup, delivery, del_pickup);
+                             pickup, delivery, del_pickup, is_pickup);
   PrintInstanceInfo(P);
 
   double LB = 0, UB = MY_INF; // considere MY_INF como infinito.
