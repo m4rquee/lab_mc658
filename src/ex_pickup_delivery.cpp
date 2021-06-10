@@ -342,9 +342,11 @@ double *ordered_edge_prefix_sum(Pickup_Delivery_Instance &P, MinCostArb &solver)
 void _exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
                      double &UB, DNodeVector &currSol, DNodeVector &bestSol,
                      double *p_sum, DNode &currNode, DNodeBoolMap &visited,
-                     map<DNode, bool> &p_visited, int pos, double curr_weight) {
+                     map<DNode, bool> &p_visited, int pos, double curr_weight,
+                     double &bound) {
   // Debug message:
-  if (pos < 3) cout << "-> nó " << P.vname[currNode] << " - nível " << pos << endl;
+  if (pos < 3)
+    printf("-> nó %4s - nível %d\n", P.vname[currNode].data(), pos);
 
   currSol[pos] = currNode; // save the current node to the route
   // Evaluate the newly created route when it's done:
@@ -360,8 +362,9 @@ void _exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
       UB = curr_weight;
       bestSol = currSol;
       PrintSolution(P, bestSol, "Novo UB.");
-      cout << "custo: " << UB << endl;
+      printf("custo: %05.5f - %02.2f%% ótimo\n", UB, 100 * LB / UB);
     }
+    if (UB < bound) bound = UB;
     return;
   }
 
@@ -378,14 +381,14 @@ void _exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
       double min_weight_for_remaining_arcs = p_sum[remaining_arcs - 1];
       double new_weight = curr_weight + P.weight[a];
       // Bound:
-      if (new_weight < UB - min_weight_for_remaining_arcs) // branch only if can improve
+      if (new_weight < bound - min_weight_for_remaining_arcs) // branch only if can beat the bound
         // Branch:
         _exact_solution(P, time_limit, LB, UB, currSol, bestSol, p_sum, next,
-                        visited, p_visited, pos + 1, new_weight);
+                        visited, p_visited, pos + 1, new_weight, bound);
 
-      if (LB == UB) return; // found an optimal solution
       if (is_pickup) p_visited[next] = false;
       visited[next] = false;
+      if (LB == UB) return; // found an optimal solution
     }
   }
 }
@@ -405,8 +408,21 @@ void exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
   visited[P.source] = true;
   visited[P.target] = true;
 
-  _exact_solution(P, time_limit, LB, UB, currSol, Sol, p_sum, P.source, visited,
-                  p_visited, 0, 0);
+  double bound = 1.25 * LB;
+  if (bound < UB) { // if the lower bound is too low tries to raise it
+    cout << "Tenta melhorar o LB:" << endl;
+    _exact_solution(P, time_limit, LB, UB, currSol, Sol, p_sum, P.source,
+                    visited, p_visited, 0, 0, bound);
+    if (UB > bound) { // no solution could beat this bound
+      LB = bound; // if no solution was found then all valid solutions have cost >= bound
+      cout << "Novo LB - " << LB << endl;
+    }
+  }
+  if (LB != UB) { // actually solves optimally
+    cout << endl << "Resolve otimamente:" << endl;
+    _exact_solution(P, time_limit, LB, UB, currSol, Sol, p_sum, P.source,
+                    visited, p_visited, 0, 0, UB);
+  }
 }
 
 bool Lab1(Pickup_Delivery_Instance &P, int time_limit, double &LB, double &UB,
@@ -422,8 +438,10 @@ bool Lab1(Pickup_Delivery_Instance &P, int time_limit, double &LB, double &UB,
   bool improved =
       arborescence_heuristic(P, time_limit, LB, UB, Sol, arb_solver);
   PrintSolution(P, Sol, "Solução inicial depois da heuristica.");
-  cout << "custo: " << UB << endl << endl;
-  exact_solution(P, time_limit, LB, UB, Sol, arb_solver);
+  printf("custo: %05.5f - %02.2f%% ótimo\n", UB, 100 * LB / UB);
+  cout << "LB: " << LB << endl << endl;
+  if (LB != UB) // if can improve
+    exact_solution(P, time_limit, LB, UB, Sol, arb_solver);
   LB = UB; // After testing all possibilities the Sol must be optimal
   return improved;
 }
