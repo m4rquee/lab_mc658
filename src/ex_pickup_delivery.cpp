@@ -235,7 +235,7 @@ bool _local_search(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVec
   // Search from end to begin because the heavier arcs are there:
   for (int i = n; i >= 1; i--)
     for (int j = i - 1; j >= 1; j--)
-      if (can_swap(P, Sol, i, j)) {
+      if (can_swap(P, Sol, j, i)) { // the first index must be the smaller one
         swap(Sol[i], Sol[j]);
         new_cost = route_cost(P, Sol);
         if (new_cost < UB) { // found a better solution
