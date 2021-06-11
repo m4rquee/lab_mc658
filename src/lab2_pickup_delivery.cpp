@@ -3,7 +3,10 @@
 // Laboratorio 2
 //
 // Send corrections/comments to Flávio K. Miyazawa
+#include "PickupDeliveryDecoder.hpp"
 #include "pickup_delivery_utils.hpp"
+#include <BRKGA.h>
+#include <MTRand.h>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
@@ -11,9 +14,24 @@
 #include <lemon/preflow.h>
 #include <string>
 
+const long unsigned seed = 0; // seed to the random number generator
+const unsigned p = 1000;      // size of population
+const double pe = 0.20;       // fraction of population to be the elite-set
+const double pm = 0.10;       // fraction of population to be replaced by mutants
+const double rhoe = 0.70;     // probability that offspring inherit an allele from elite parent
+const unsigned K = 3;         // number of independent populations
+const unsigned MAXT = 4;      // number of threads for parallel decoding
+
 bool Lab2(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol) {
-  P.start_counter(); // fixes the start time point
   bool improved = false;
+  P.start_counter(); // fixes the start time point
+
+  const unsigned n = 2 * P.npairs; // size of chromosomes
+  PickupDeliveryDecoder decoder;
+  MTRand rng(seed); // initialize the random number generator
+  // Initialize the BRKGA-based heuristic:
+  BRKGA<PickupDeliveryDecoder, MTRand> algorithm(n, p, pe, pm, rhoe, decoder,
+                                                 rng, K, MAXT);
   return improved;
 }
 
@@ -31,7 +49,6 @@ int main(int argc, char *argv[]) {
   vector<DNode> V;
   Digraph::NodeMap<DNode> del_pickup(g); // map a delivery to it's pickup
   DNodeBoolMap is_pickup(g, false); // used to quickly check if a node is a pickup
-  int seed = 0;
   srand48(seed);
 
   // uncomment one of these lines to change default pdf reader, or insert new

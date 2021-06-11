@@ -12,6 +12,7 @@ set(default_build_type "Release")
 # Headers directories
 include_directories("include")
 include_directories("lemon/lemon-1.3.1/include")
+include_directories("brkga/src")
 
 # Utils used in all targets
 add_library(MY_LIB src/mygraphlib.cpp src/geompack.cpp src/myutils.cpp
@@ -29,7 +30,7 @@ target_link_libraries(lab1_pickup_delivery m)
 target_link_libraries(lab1_pickup_delivery pthread)
 target_link_libraries(lab1_pickup_delivery MY_LIB)
 
-add_executable(lab2_pickup_delivery src/lab2_pickup_delivery.cpp)
+add_executable(lab2_pickup_delivery src/lab2_pickup_delivery.cpp src/PickupDeliveryDecoder.cpp)
 target_link_libraries(lab2_pickup_delivery m)
 target_link_libraries(lab2_pickup_delivery pthread)
 target_link_libraries(lab2_pickup_delivery MY_LIB)
