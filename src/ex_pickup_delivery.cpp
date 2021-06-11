@@ -16,9 +16,12 @@
 #include <lemon/min_cost_arborescence.h>
 #include <queue>
 #include <string>
+#include <chrono>
 
 using namespace lemon;
 using namespace std;
+
+typedef chrono::time_point<chrono::system_clock> time_point;
 
 typedef vector<DNode> DNodeVector;
 
@@ -334,8 +337,8 @@ double arborescence_transversal(Pickup_Delivery_Instance &P, DNodeVector &Sol,
   return route_cost(P, Sol); // Calculate the route cost
 }
 
-bool arborescence_heuristic(Pickup_Delivery_Instance &P, int time_limit, double &LB,
-                            double &UB, DNodeVector &Sol, MinCostArb &solver) {
+bool arborescence_heuristic(Pickup_Delivery_Instance &P, double &LB, double &UB,
+                            DNodeVector &Sol, MinCostArb &solver) {
   DNodeVector arbSol(P.nnodes); // starts the solution vector
   double newUB = arborescence_transversal(P, arbSol, solver);
   if (newUB < UB) { // check if this is a better solution
@@ -403,16 +406,23 @@ double *ordered_edge_prefix_sum(Pickup_Delivery_Instance &P, MinCostArb &solver)
   return p_sum;
 }
 
-bool _exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
-                     double &UB, DNodeVector &currSol, DNodeVector &bestSol,
-                     double *p_sum, DNode &currNode, DNodeBoolMap &visited,
+bool _exact_solution(Pickup_Delivery_Instance &P, int time_limit,
+                     time_point &start, double &LB, double &UB,
+                     DNodeVector &currSol, DNodeVector &bestSol, double *p_sum,
+                     DNode &currNode, DNodeBoolMap &visited,
                      map<DNode, bool> &p_visited, int pos, double curr_weight,
-                     double &bound) {
+                     double &bound, bool &broke) {
   bool improved = false;
+  time_point now = chrono::system_clock::now();
+  int elapsed = (now - start).count() / 1E9;
   // Debug message:
   if (pos < 4) {
-    printf("\r-> nó %4s - nível %d", P.vname[currNode].data(), pos);
+    printf("\r-> nó %4s - nível %d - %ds", P.vname[currNode].data(), pos, elapsed);
     cout << std::flush;
+  }
+  if (elapsed > time_limit) {
+    broke = true;
+    return improved;
   }
 
   currSol[pos] = currNode; // save the current node to the route
@@ -428,7 +438,7 @@ bool _exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
     if (curr_weight < UB) {
       UB = curr_weight;
       bestSol = currSol;
-      PrintSolution(P, bestSol, "Novo UB.");
+      PrintSolution(P, bestSol, "\nNovo UB.");
       printf("custo: %05.5f - %02.2f%% ótimo\n", UB, 100 * LB / UB);
       improved = true;
       if (P.npairs >= 10)
@@ -453,9 +463,9 @@ bool _exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
       // Bound:
       if (new_weight < bound - min_weight_for_remaining_arcs) // branch only if can beat the bound
         // Branch:
-        improved |= _exact_solution(P, time_limit, LB, UB, currSol, bestSol,
+        improved |= _exact_solution(P, time_limit, start, LB, UB, currSol, bestSol,
                                     p_sum, next, visited, p_visited, pos + 1,
-                                    new_weight, bound);
+                                    new_weight, bound, broke);
 
       if (is_pickup) p_visited[next] = false;
       visited[next] = false;
@@ -465,8 +475,9 @@ bool _exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
   return improved;
 }
 
-bool exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
-                    double &UB, DNodeVector &Sol, MinCostArb &solver) {
+bool exact_solution(Pickup_Delivery_Instance &P, int time_limit,
+                    time_point &start, double &LB, double &UB, DNodeVector &Sol,
+                    MinCostArb &solver) {
   map<DNode, bool> p_visited; // if each pickup has already been visited
   for (const auto &key : P.pickup) p_visited[key] = false; // init the map
   DNodeBoolMap visited(P.g, false); // if each node has already been visited
@@ -480,13 +491,13 @@ bool exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
   visited[P.source] = true;
   visited[P.target] = true;
 
-  bool improved = false;
+  bool improved = false, broke = false;
   double bound = 1.2 * LB;
   // If the lower bound is too low tries to raise it (only if is fast):
   if (bound < UB and P.npairs <= 15) {
     cout << "-----> Tenta melhorar o LB:" << endl;
-    improved |= _exact_solution(P, time_limit, LB, UB, currSol, Sol, p_sum,
-                                P.source, visited, p_visited, 0, 0, bound);
+    improved |= _exact_solution(P, time_limit, start, LB, UB, currSol, Sol, p_sum,
+                                P.source, visited, p_visited, 0, 0, bound, broke);
     cout << "\r";
     if (UB > bound) { // no solution could beat this bound
       LB = bound; // if no solution was found then all valid solutions have cost >= bound
@@ -495,30 +506,34 @@ bool exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
   }
   if (LB != UB) { // actually solves optimally
     cout << endl << "-----> Resolve otimamente:" << endl;
-    improved |= _exact_solution(P, time_limit, LB, UB, currSol, Sol, p_sum,
-                                P.source, visited, p_visited, 0, 0, UB);
+    improved |= _exact_solution(P, time_limit, start, LB, UB, currSol, Sol, p_sum,
+                                P.source, visited, p_visited, 0, 0, UB, broke);
     cout << endl << endl;
   }
+  if (!broke)
+    LB = UB; // After testing all possibilities the Sol must be optimal
+  else
+    cout << endl << "Tempo máximo de " << time_limit << "s atingido." << endl;
   return improved;
 }
 
 bool Lab1(Pickup_Delivery_Instance &P, int time_limit, double &LB, double &UB,
           DNodeVector &Sol) {
+  time_point start = chrono::system_clock::now();
+
   // Generates the arborescence that will guide the route creation:
   MinCostArb arb_solver(P.g, P.weight);
   arb_solver.run(P.source); // root the arborescence in the source
   // As a spanning digraph rooted at the source this is itself a LB:
   LB = max(LB, arb_solver.arborescenceCost());
 
-  bool improved =
-      arborescence_heuristic(P, time_limit, LB, UB, Sol, arb_solver);
+  bool improved = arborescence_heuristic(P, LB, UB, Sol, arb_solver);
 
   if (LB != UB) // if can improve
     improved |= local_search(P, LB, UB, Sol);
 
   if (LB != UB) // if can improve
-    improved |= exact_solution(P, time_limit, LB, UB, Sol, arb_solver);
-  LB = UB; // After testing all possibilities the Sol must be optimal
+    improved |= exact_solution(P, time_limit, start, LB, UB, Sol, arb_solver);
   return improved;
 }
 
