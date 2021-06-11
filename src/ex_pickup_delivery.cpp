@@ -52,21 +52,25 @@ public:
                            DNode &targetnode, int &npairs, DNodeVector &pickup,
                            DNodeVector &delivery,
                            Digraph::NodeMap<DNode> &del_pickup,
-                           DNodeBoolMap &is_pickup);
+                           DNodeBoolMap &is_pickup, int &time_limit);
+  void start_counter();
+
   Digraph &g;
   DNodeStringMap &vname;
   DNodePosMap &px;
   DNodePosMap &py;
   ArcValueMap &weight;
-  int nnodes;
+  const int nnodes;
   DNode &source;
   DNode &target;
-  int npairs;
+  const int npairs;
   DNodeVector &pickup;
   DNodeVector &delivery;
   Digraph::NodeMap<DNode> &del_pickup;
   map<DNode, vector<Arc>> ordered_arcs;
   DNodeBoolMap &is_pickup;
+  time_point start;
+  const int time_limit;
 };
 
 Pickup_Delivery_Instance::Pickup_Delivery_Instance(
@@ -74,12 +78,11 @@ Pickup_Delivery_Instance::Pickup_Delivery_Instance(
     DNodePosMap &posy, ArcValueMap &eweight, DNode &sourcenode,
     DNode &targetnode, int &vnpairs, DNodeVector &vpickup,
     DNodeVector &vdelivery, Digraph::NodeMap<DNode> &del_pickup,
-    DNodeBoolMap &is_pickup)
+    DNodeBoolMap &is_pickup, int &time_limit)
     : g(graph), vname(vvname), px(posx), py(posy), weight(eweight),
       source(sourcenode), target(targetnode), npairs(vnpairs), pickup(vpickup),
-      delivery(vdelivery), del_pickup(del_pickup), is_pickup(is_pickup) {
-  nnodes = countNodes(g);
-
+      delivery(vdelivery), del_pickup(del_pickup), is_pickup(is_pickup),
+      nnodes(2 * vnpairs + 2), time_limit(time_limit) {
   // Store the out arcs of each node sorted by weight:
   ArcCmp arcCmp(weight);           // arc comparator based on this weight map
   min_arc_heap sorting_heap(arcCmp); // aux heap used for sorting
@@ -94,9 +97,14 @@ Pickup_Delivery_Instance::Pickup_Delivery_Instance(
   }
 }
 
+void Pickup_Delivery_Instance::start_counter() {
+  start = chrono::system_clock::now();
+}
+
 void PrintInstanceInfo(Pickup_Delivery_Instance &P) {
   cout << endl << endl;
   cout << "Pickup Delivery Graph Informations" << endl;
+  cout << "\tTime limit = " << P.time_limit << "s" << endl;
   cout << "\tSource = " << P.vname[P.source] << endl;
   cout << "\tTarget = " << P.vname[P.target] << endl;
   for (int i = 0; i < P.npairs; i++) {
@@ -252,16 +260,24 @@ bool _local_search(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVec
 bool local_search(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol) {
   bool improved = false, aux;
   cout << "-----> Fazendo uma busca local." << endl;
-  while ((aux = _local_search(P, LB, UB, Sol))) improved |= aux;
+  while ((aux = _local_search(P, LB, UB, Sol))) {
+    improved |= aux;
+    time_point now = chrono::system_clock::now();
+    int elapsed = (now - P.start).count() / 1E9;
+    if (elapsed >= P.time_limit) {
+      cout << endl << "Tempo máximo de " << P.time_limit << "s atingido." << endl;
+      break;
+    }
+  }
   cout << endl;
   return improved;
 }
 
 // Heuristica apenas para testar a visualizacao das solucoes.
-bool dummy_heuristic(Pickup_Delivery_Instance &P, int time_limit, double &LB,
+bool dummy_heuristic(Pickup_Delivery_Instance &P, double &LB,
                      double &UB, DNodeVector &Sol) {
   cout << "Execucao da Heuristica Boba" << endl;
-  cout << "\tEsta rotina deveria respeitar o tempo de no maximo " << time_limit
+  cout << "\tEsta rotina deveria respeitar o tempo de no maximo " << P.time_limit
        << " segundos" << endl;
   if (UB == MY_INF) { // Faz alguma coisa so' se ainda nao tem solucao
     Sol.resize(P.nnodes);
@@ -288,7 +304,7 @@ void _arborescence_transversal(Pickup_Delivery_Instance &P, MinCostArb &solver,
 
   // Mark as visited:
   visited[currNode] = true;
-  if (p_visited.count(currNode)) // mark the currNode if it's a pickup
+  if (P.is_pickup[currNode]) // mark the currNode if it's a pickup
     p_visited[currNode] = true;
 
   // Min arc over all neighbours:
@@ -407,21 +423,20 @@ double *ordered_edge_prefix_sum(Pickup_Delivery_Instance &P, MinCostArb &solver)
   return p_sum;
 }
 
-bool _exact_solution(Pickup_Delivery_Instance &P, int time_limit,
-                     time_point &start, double &LB, double &UB,
+bool _exact_solution(Pickup_Delivery_Instance &P, double &LB, double &UB,
                      DNodeVector &currSol, DNodeVector &bestSol, double *p_sum,
                      DNode &currNode, DNodeBoolMap &visited,
                      map<DNode, bool> &p_visited, int pos, double curr_weight,
                      double &bound, bool &broke) {
   bool improved = false;
   time_point now = chrono::system_clock::now();
-  int elapsed = (now - start).count() / 1E9;
+  int elapsed = (now - P.start).count() / 1E9;
   // Debug message:
-  if (P.nnodes - pos >= 15) { // cut when the frequency speeds up
+  if (P.nnodes - pos >= 20) { // cut when the frequency speeds up
     printf("\r-> nó %4s - nível %d - %ds", P.vname[currNode].data(), pos, elapsed);
     cout << std::flush;
   }
-  if (elapsed > time_limit) {
+  if (elapsed >= P.time_limit) {
     broke = true;
     return improved;
   }
@@ -442,7 +457,8 @@ bool _exact_solution(Pickup_Delivery_Instance &P, int time_limit,
       PrintSolution(P, bestSol, "\nNovo UB.");
       printf("custo: %05.5f - %02.2f%% ótimo\n", UB, 100 * LB / UB);
       improved = true;
-      if (P.npairs >= 10)
+      // When on large instances the local search may lead to quick improves:
+      if (P.npairs >= 15)
         local_search(P, LB, UB, bestSol);
     }
     if (UB < bound) bound = UB;
@@ -464,9 +480,8 @@ bool _exact_solution(Pickup_Delivery_Instance &P, int time_limit,
       // Bound:
       if (new_weight < bound - min_weight_for_remaining_arcs) // branch only if can beat the bound
         // Branch:
-        improved |= _exact_solution(P, time_limit, start, LB, UB, currSol, bestSol,
-                                    p_sum, next, visited, p_visited, pos + 1,
-                                    new_weight, bound, broke);
+        improved |= _exact_solution(P, LB, UB, currSol, bestSol, p_sum, next, visited,
+                            p_visited, pos + 1, new_weight, bound, broke);
 
       if (is_pickup) p_visited[next] = false;
       visited[next] = false;
@@ -476,9 +491,8 @@ bool _exact_solution(Pickup_Delivery_Instance &P, int time_limit,
   return improved;
 }
 
-bool exact_solution(Pickup_Delivery_Instance &P, int time_limit,
-                    time_point &start, double &LB, double &UB, DNodeVector &Sol,
-                    MinCostArb &solver) {
+bool exact_solution(Pickup_Delivery_Instance &P, double &LB, double &UB,
+                    DNodeVector &Sol, MinCostArb &solver) {
   map<DNode, bool> p_visited; // if each pickup has already been visited
   for (const auto &key : P.pickup) p_visited[key] = false; // init the map
   DNodeBoolMap visited(P.g, false); // if each node has already been visited
@@ -497,30 +511,29 @@ bool exact_solution(Pickup_Delivery_Instance &P, int time_limit,
   // If the lower bound is too low tries to raise it (only if is fast):
   if (bound < UB and P.npairs <= 15) {
     cout << "-----> Tenta melhorar o LB:" << endl;
-    improved |= _exact_solution(P, time_limit, start, LB, UB, currSol, Sol, p_sum,
-                                P.source, visited, p_visited, 0, 0, bound, broke);
+    improved |= _exact_solution(P, LB, UB, currSol, Sol, p_sum, P.source,
+                                visited, p_visited, 0, 0, bound, broke);
     cout << "\r";
-    if (UB > bound) { // no solution could beat this bound
+    if (UB > bound && !broke) { // no solution could beat this bound
       LB = bound; // if no solution was found then all valid solutions have cost >= bound
       cout << "Novo LB - " << LB << endl;
     }
   }
   if (LB != UB) { // actually solves optimally
     cout << endl << "-----> Resolve otimamente:" << endl;
-    improved |= _exact_solution(P, time_limit, start, LB, UB, currSol, Sol, p_sum,
-                                P.source, visited, p_visited, 0, 0, UB, broke);
+    improved |= _exact_solution(P, LB, UB, currSol, Sol, p_sum, P.source,
+                                visited, p_visited, 0, 0, UB, broke);
     cout << endl << endl;
   }
   if (!broke)
     LB = UB; // After testing all possibilities the Sol must be optimal
   else
-    cout << endl << "Tempo máximo de " << time_limit << "s atingido." << endl;
+    cout << endl << "Tempo máximo de " << P.time_limit << "s atingido." << endl;
   return improved;
 }
 
-bool Lab1(Pickup_Delivery_Instance &P, int time_limit, double &LB, double &UB,
-          DNodeVector &Sol) {
-  time_point start = chrono::system_clock::now();
+bool Lab1(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol) {
+  P.start_counter(); // fixes the start time point
 
   // Generates the arborescence that will guide the route creation:
   MinCostArb arb_solver(P.g, P.weight);
@@ -534,7 +547,7 @@ bool Lab1(Pickup_Delivery_Instance &P, int time_limit, double &LB, double &UB,
     improved |= local_search(P, LB, UB, Sol);
 
   if (LB != UB) // if can improve
-    improved |= exact_solution(P, time_limit, start, LB, UB, Sol, arb_solver);
+    improved |= exact_solution(P, LB, UB, Sol, arb_solver);
   return improved;
 }
 
@@ -596,13 +609,13 @@ int main(int argc, char *argv[]) {
   }
 
   Pickup_Delivery_Instance P(g, vname, px, py, weight, source, target, npairs,
-                             pickup, delivery, del_pickup, is_pickup);
+                             pickup, delivery, del_pickup, is_pickup, maxtime);
   PrintInstanceInfo(P);
 
   double LB = 0, UB = MY_INF; // considere MY_INF como infinito.
   DNodeVector Solucao;
 
-  bool melhorou = Lab1(P, maxtime, LB, UB, Solucao);
+  bool melhorou = Lab1(P, LB, UB, Solucao);
 
   if (melhorou) {
     ViewPickupDeliverySolution(P, LB, UB, Solucao, "Solucao do Lab.");
