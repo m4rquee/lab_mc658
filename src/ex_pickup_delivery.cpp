@@ -232,8 +232,9 @@ bool _local_search(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVec
   bool improved = false;
   double new_cost;
   int n = P.nnodes - 2;
-  for (int i = 1; i < n - 1; i++)
-    for (int j = i + 1; j < n - 1; j++)
+  // Search from end to begin because the heavier arcs are there:
+  for (int i = n; i >= 1; i--)
+    for (int j = i - 1; j >= 1; j--)
       if (can_swap(P, Sol, i, j)) {
         swap(Sol[i], Sol[j]);
         new_cost = route_cost(P, Sol);
@@ -416,7 +417,7 @@ bool _exact_solution(Pickup_Delivery_Instance &P, int time_limit,
   time_point now = chrono::system_clock::now();
   int elapsed = (now - start).count() / 1E9;
   // Debug message:
-  if (pos < 4) {
+  if (P.nnodes - pos >= 15) { // cut when the frequency speeds up
     printf("\r-> nó %4s - nível %d - %ds", P.vname[currNode].data(), pos, elapsed);
     cout << std::flush;
   }
