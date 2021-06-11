@@ -202,6 +202,57 @@ double route_cost(const Pickup_Delivery_Instance &P, const DNodeVector &Sol) {
   return cost;
 }
 
+bool can_swap(Pickup_Delivery_Instance &P, DNodeVector &Sol, int i, int j) {
+  bool i_is_pickup = P.is_pickup[Sol[i]];
+  bool j_is_pickup = P.is_pickup[Sol[j]];
+  if (i_is_pickup and j_is_pickup)
+    for (int k = i + 1; k < j; k++)
+      if (!P.is_pickup[Sol[k]] and Sol[i] == P.del_pickup[Sol[k]])
+        return false; // i is delivered at k
+  if (i_is_pickup and !j_is_pickup) {
+    if (Sol[i] == P.del_pickup[Sol[j]]) return false; // i is delivered at j
+    for (int k = i + 1; k < j; k++)
+      if ((!P.is_pickup[Sol[k]] and Sol[i] == P.del_pickup[Sol[k]]) or
+          Sol[k] == P.del_pickup[Sol[j]])
+        return false; // i is delivered at k or k is delivered at j
+  }
+  if (!i_is_pickup and j_is_pickup)
+    return true; // no problem swapping
+  if (!i_is_pickup and !j_is_pickup)
+    for (int k = i + 1; k < j; k++)
+      if (Sol[k] == P.del_pickup[Sol[j]])
+        return false; // k is delivered at j
+  return true; // can swap the nodes
+}
+
+bool _local_search(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol) {
+  bool improved = false;
+  double new_cost;
+  int n = P.nnodes - 2;
+  for (int i = 1; i < n - 1; i++)
+    for (int j = i + 1; j < n - 1; j++)
+      if (can_swap(P, Sol, i, j)) {
+        swap(Sol[i], Sol[j]);
+        new_cost = route_cost(P, Sol);
+        if (new_cost < UB) { // found a better solution
+          improved = true;
+          UB = new_cost;
+          PrintSolution(P, Sol, "Novo UB.");
+          printf("custo: %05.5f - %02.2f%% ótimo\n", UB, 100 * LB / UB);
+        } else
+          swap(Sol[i], Sol[j]); // reset
+      }
+  return improved;
+}
+
+bool local_search(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol) {
+  bool improved = false, aux;
+  cout << "Fazendo uma busca local." << endl;
+  while ((aux = _local_search(P, LB, UB, Sol))) improved |= aux;
+  cout << endl;
+  return improved;
+}
+
 // Heuristica apenas para testar a visualizacao das solucoes.
 bool dummy_heuristic(Pickup_Delivery_Instance &P, int time_limit, double &LB,
                      double &UB, DNodeVector &Sol) {
@@ -378,6 +429,8 @@ bool _exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
       PrintSolution(P, bestSol, "Novo UB.");
       printf("custo: %05.5f - %02.2f%% ótimo\n", UB, 100 * LB / UB);
       improved = true;
+      if (P.npairs >= 10)
+        local_search(P, LB, UB, bestSol);
     }
     if (UB < bound) bound = UB;
     return improved;
@@ -442,57 +495,6 @@ bool exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
     improved |= _exact_solution(P, time_limit, LB, UB, currSol, Sol, p_sum,
                                 P.source, visited, p_visited, 0, 0, UB);
   }
-  return improved;
-}
-
-bool can_swap(Pickup_Delivery_Instance &P, DNodeVector &Sol, int i, int j) {
-  bool i_is_pickup = P.is_pickup[Sol[i]];
-  bool j_is_pickup = P.is_pickup[Sol[j]];
-  if (i_is_pickup and j_is_pickup)
-    for (int k = i + 1; k < j; k++)
-      if (!P.is_pickup[Sol[k]] and Sol[i] == P.del_pickup[Sol[k]])
-        return false; // i is delivered at k
-  if (i_is_pickup and !j_is_pickup) {
-    if (Sol[i] == P.del_pickup[Sol[j]]) return false; // i is delivered at j
-    for (int k = i + 1; k < j; k++)
-      if ((!P.is_pickup[Sol[k]] and Sol[i] == P.del_pickup[Sol[k]]) or
-          Sol[k] == P.del_pickup[Sol[j]])
-        return false; // i is delivered at k or k is delivered at j
-  }
-  if (!i_is_pickup and j_is_pickup)
-    return true; // no problem swapping
-  if (!i_is_pickup and !j_is_pickup)
-    for (int k = i + 1; k < j; k++)
-      if (Sol[k] == P.del_pickup[Sol[j]])
-        return false; // k is delivered at j
-  return true; // can swap the nodes
-}
-
-bool _local_search(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol) {
-  bool improved = false;
-  double new_cost;
-  int n = P.nnodes - 2;
-  for (int i = 1; i < n - 1; i++)
-    for (int j = i + 1; j < n - 1; j++)
-      if (can_swap(P, Sol, i, j)) {
-        swap(Sol[i], Sol[j]);
-        new_cost = route_cost(P, Sol);
-        if (new_cost < UB) { // found a better solution
-          improved = true;
-          UB = new_cost;
-          PrintSolution(P, Sol, "Novo UB.");
-          printf("custo: %05.5f - %02.2f%% ótimo\n", UB, 100 * LB / UB);
-        } else
-          swap(Sol[i], Sol[j]); // reset
-      }
-  return improved;
-}
-
-bool local_search(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol) {
-  bool improved = false, aux;
-  cout << "Fazendo uma busca local." << endl;
-  while ((aux = _local_search(P, LB, UB, Sol))) improved |= aux;
-  cout << endl;
   return improved;
 }
 
