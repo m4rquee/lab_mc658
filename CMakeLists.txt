@@ -14,7 +14,8 @@ include_directories("include")
 include_directories("lemon/lemon-1.3.1/include")
 
 # Utils used in all targets
-add_library(MY_LIB src/mygraphlib.cpp src/geompack.cpp src/myutils.cpp src/mycolor.cpp src/deprecated.cpp)
+add_library(MY_LIB src/mygraphlib.cpp src/geompack.cpp src/myutils.cpp
+        src/mycolor.cpp src/deprecated.cpp src/pickup_delivery_utils.cpp)
 
 # Lemon lib directory
 link_directories(${CMAKE_SOURCE_DIR}/lemon/lemon-1.3.1/lib)
@@ -27,3 +28,8 @@ add_executable(lab1_pickup_delivery src/lab1_pickup_delivery.cpp)
 target_link_libraries(lab1_pickup_delivery m)
 target_link_libraries(lab1_pickup_delivery pthread)
 target_link_libraries(lab1_pickup_delivery MY_LIB)
+
+add_executable(lab2_pickup_delivery src/lab2_pickup_delivery.cpp)
+target_link_libraries(lab2_pickup_delivery m)
+target_link_libraries(lab2_pickup_delivery pthread)
+target_link_libraries(lab2_pickup_delivery MY_LIB)
