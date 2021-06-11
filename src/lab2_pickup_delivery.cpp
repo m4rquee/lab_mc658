@@ -22,6 +22,10 @@ const double rhoe = 0.70;     // probability that offspring inherit an allele fr
 const unsigned K = 3;         // number of independent populations
 const unsigned MAXT = 4;      // number of threads for parallel decoding
 
+const unsigned MAX_GENS = 1000;	// run for 1000 gens
+const unsigned X_INTVL = 100;	// exchange best individuals at every 100 generations
+const unsigned X_NUMBER = 2;	// exchange top 2 best
+
 bool Lab2(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol) {
   bool improved = false;
   P.start_counter(); // fixes the start time point
@@ -32,6 +36,20 @@ bool Lab2(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   // Initialize the BRKGA-based heuristic:
   BRKGA<PickupDeliveryDecoder, MTRand> algorithm(n, p, pe, pm, rhoe, decoder,
                                                  rng, K, MAXT);
+  unsigned generation = 0; // current generation
+  do {
+    algorithm.evolve(); // evolve the population for one generation
+
+    if (++generation % X_INTVL == 0)
+      algorithm.exchangeElite(X_NUMBER); // exchange top individuals
+  } while (generation < MAX_GENS);
+
+  double best_val_found = algorithm.getBestFitness();
+  if (best_val_found < UB) {
+    UB = best_val_found;
+    decoder.decode(algorithm.getBestChromosome(), Sol);
+    improved = true;
+  }
   return improved;
 }
 
