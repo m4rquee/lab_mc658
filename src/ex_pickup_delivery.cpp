@@ -247,7 +247,7 @@ bool _local_search(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVec
 
 bool local_search(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol) {
   bool improved = false, aux;
-  cout << "Fazendo uma busca local." << endl;
+  cout << "-----> Fazendo uma busca local." << endl;
   while ((aux = _local_search(P, LB, UB, Sol))) improved |= aux;
   cout << endl;
   return improved;
@@ -410,8 +410,10 @@ bool _exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
                      double &bound) {
   bool improved = false;
   // Debug message:
-  if (pos < 3)
-    printf("-> nó %4s - nível %d\n", P.vname[currNode].data(), pos);
+  if (pos < 4) {
+    printf("\r-> nó %4s - nível %d", P.vname[currNode].data(), pos);
+    cout << std::flush;
+  }
 
   currSol[pos] = currNode; // save the current node to the route
   // Evaluate the newly created route when it's done:
@@ -482,18 +484,20 @@ bool exact_solution(Pickup_Delivery_Instance &P, int time_limit, double &LB,
   double bound = 1.2 * LB;
   // If the lower bound is too low tries to raise it (only if is fast):
   if (bound < UB and P.npairs <= 15) {
-    cout << "Tenta melhorar o LB:" << endl;
+    cout << "-----> Tenta melhorar o LB:" << endl;
     improved |= _exact_solution(P, time_limit, LB, UB, currSol, Sol, p_sum,
                                 P.source, visited, p_visited, 0, 0, bound);
+    cout << "\r";
     if (UB > bound) { // no solution could beat this bound
       LB = bound; // if no solution was found then all valid solutions have cost >= bound
       cout << "Novo LB - " << LB << endl;
     }
   }
   if (LB != UB) { // actually solves optimally
-    cout << endl << "Resolve otimamente:" << endl;
+    cout << endl << "-----> Resolve otimamente:" << endl;
     improved |= _exact_solution(P, time_limit, LB, UB, currSol, Sol, p_sum,
                                 P.source, visited, p_visited, 0, 0, UB);
+    cout << endl << endl;
   }
   return improved;
 }
