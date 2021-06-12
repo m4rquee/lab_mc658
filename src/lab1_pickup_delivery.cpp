@@ -13,65 +13,6 @@
 
 #define EPS 2.0
 
-bool can_swap(Pickup_Delivery_Instance &P, DNodeVector &Sol, int i, int j) {
-  bool i_is_pickup = P.is_pickup[Sol[i]];
-  bool j_is_pickup = P.is_pickup[Sol[j]];
-  if (i_is_pickup and j_is_pickup) {
-    for (int k = i + 1; k < j; k++)
-      if (!P.is_pickup[Sol[k]] and Sol[i] == P.del_pickup[Sol[k]])
-        return false; // i is delivered at k
-  } else if (i_is_pickup and !j_is_pickup) {
-    if (Sol[i] == P.del_pickup[Sol[j]]) return false; // i is delivered at j
-    for (int k = i + 1; k < j; k++)
-      if ((!P.is_pickup[Sol[k]] and Sol[i] == P.del_pickup[Sol[k]]) or
-          Sol[k] == P.del_pickup[Sol[j]])
-        return false; // i is delivered at k or k is delivered at j
-  } else if (!i_is_pickup and j_is_pickup)
-    return true; // no problem swapping
-  else // (!i_is_pickup and !j_is_pickup):
-    for (int k = i + 1; k < j; k++)
-      if (Sol[k] == P.del_pickup[Sol[j]])
-        return false; // k is delivered at j
-  return true; // can swap the nodes
-}
-
-bool _local_search(Pickup_Delivery_Instance &P, double &LB, double &UB,
-                   DNodeVector &Sol) {
-  bool improved = false;
-  double new_cost;
-  int n = P.nnodes - 2;
-  // Search from end to begin because the heavier arcs are there:
-  for (int i = n; i >= 1; i--)
-    for (int j = i - 1; j >= 1; j--)
-      if (can_swap(P, Sol, j, i)) { // the first index must be the smaller one
-        swap(Sol[i], Sol[j]);
-        new_cost = route_cost(P, Sol);
-        if (new_cost < UB) { // found a better solution
-          improved = true;
-          UB = new_cost;
-          NEW_UB_MESSAGE(Sol);
-        } else
-          swap(Sol[i], Sol[j]); // reset
-      }
-  return improved;
-}
-
-bool local_search(Pickup_Delivery_Instance &P, double &LB, double &UB,
-                  DNodeVector &Sol) {
-  bool improved = false, aux;
-  cout << "-----> Fazendo uma busca local." << endl;
-  while ((aux = _local_search(P, LB, UB, Sol))) {
-    improved |= aux;
-    int elapsed = ELAPSED;
-    if (elapsed >= P.time_limit) {
-      cout << endl << "Tempo máximo de " << P.time_limit << "s atingido." << endl;
-      break;
-    }
-  }
-  cout << endl;
-  return improved;
-}
-
 void _arborescence_transversal(Pickup_Delivery_Instance &P, MinCostArb &solver,
                                DNodeVector &Sol, DNode &currNode,
                                DNodeBoolMap &visited,

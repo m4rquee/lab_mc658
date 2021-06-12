@@ -8,7 +8,7 @@
 #include <lemon/min_cost_arborescence.h>
 
 #define ELAPSED ((chrono::system_clock::now() - P.start).count() / 1E9)
-#define _NEW_UB_MESSAGE(SOL, MSG) {                                             \
+#define _NEW_UB_MESSAGE(SOL, MSG) {                                            \
     PrintSolution(P, SOL, MSG);                                                \
     printf("custo: %05.5f - %02.2f%% ótimo\n", UB, 100 * LB / UB);             \
   }
@@ -83,5 +83,8 @@ double route_cost(const Pickup_Delivery_Instance &P, const DNodeVector &Sol);
 bool ViewPickupDeliverySolution(Pickup_Delivery_Instance &P, double &LB,
                                 double &UB, DNodeVector &Sol,
                                 const string &msg);
+
+bool local_search(Pickup_Delivery_Instance &P, double &LB, double &UB,
+                  DNodeVector &Sol);
 
 #endif // LAB_MC658_PICKUP_DELIVERY_UTILS_HPP

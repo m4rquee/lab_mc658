@@ -22,13 +22,22 @@ const double rhoe = 0.70;     // probability that offspring inherit an allele fr
 const unsigned K = 3;         // number of independent populations
 const unsigned MAXT = 4;      // number of threads for parallel decoding
 
-const unsigned MAX_GENS = 1000;	// run for 1000 gens
-const unsigned X_INTVL = 100;	// exchange best individuals at every 100 generations
-const unsigned X_NUMBER = 2;	// exchange top 2 best
+const unsigned MAX_GENS = 500000; // run for 500000 gens
+const unsigned MAX_UNCHANGED = 1; // breaks the loop after 1 unchanged check(s)
+const unsigned X_INTVL = 100;     // exchange best individuals at every 100 generations
+const unsigned X_NUMBER = 2;      // exchange top 2 best
+
+inline void genArbLB(Pickup_Delivery_Instance &P, double &LB) {
+  MinCostArb arb_solver(P.g, P.weight); // generates a min arborescence to derive a LB
+  arb_solver.run(P.source); // root the arborescence in the source
+  // As a spanning digraph rooted at the source this is itself a LB:
+  LB = max(LB, arb_solver.arborescenceCost());
+}
 
 bool Lab2(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol) {
   bool improved = false;
   P.start_counter(); // fixes the start time point
+  genArbLB(P, LB);
 
   const unsigned n = 2 * P.npairs; // size of chromosomes
   PickupDeliveryDecoder decoder(P);
@@ -36,20 +45,38 @@ bool Lab2(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   // Initialize the BRKGA-based heuristic:
   BRKGA<PickupDeliveryDecoder, MTRand> algorithm(n, p, pe, pm, rhoe, decoder,
                                                  rng, K, MAXT);
+  int unchanged_checks = 0;
+  DNodeVector runSol(P.nnodes);
   unsigned generation = 0; // current generation
   do {
-    algorithm.evolve(); // evolve the population for one generation
+    algorithm.evolve(X_INTVL); // evolve the population for one generation
+    generation += X_INTVL;
+    algorithm.exchangeElite(X_NUMBER); // exchange top individuals
 
-    if (++generation % X_INTVL == 0)
-      algorithm.exchangeElite(X_NUMBER); // exchange top individuals
-  } while (generation < MAX_GENS);
+    // Check for new UB:
+    unchanged_checks++;
+    double best_val_found = algorithm.getBestFitness();
+    if (best_val_found < UB) {
+      improved = true;
+      unchanged_checks = 0;
+      UB = best_val_found;
+      decoder.decode(algorithm.getBestChromosome(), runSol);
+      NEW_UB_MESSAGE(runSol);
+      // When on large instances the local search may lead to quick improves:
+      if (P.npairs >= 15)
+        local_search(P, LB, UB, runSol);
+    }
 
-  double best_val_found = algorithm.getBestFitness();
-  if (best_val_found < UB) {
-    UB = best_val_found;
-    decoder.decode(algorithm.getBestChromosome(), Sol);
-    improved = true;
-  }
+    int elapsed = ELAPSED;
+    if (elapsed >= P.time_limit) {
+      cout << "Tempo máximo de " << P.time_limit << "s atingido." << endl;
+      break;
+    }
+    printf("\r-> generation %d - %ds", generation, elapsed);
+    cout << std::flush;
+  } while (generation < MAX_GENS and unchanged_checks < MAX_UNCHANGED);
+
+  if (improved) Sol = runSol;
   return improved;
 }
 
@@ -119,7 +146,7 @@ int main(int argc, char *argv[]) {
 
   if (melhorou) {
     ViewPickupDeliverySolution(P, LB, UB, Solucao, "Solucao do Lab.");
-    PrintSolution(P, Solucao, "Solucao do Lab2.");
+    PrintSolution(P, Solucao, "\nSolucao do Lab2.");
     cout << "custo: " << UB << endl;
   }
   return 0;
