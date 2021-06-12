@@ -23,7 +23,7 @@ const unsigned K = 3;         // number of independent populations
 const unsigned MAXT = 4;      // number of threads for parallel decoding
 
 const unsigned MAX_GENS = 500000; // run for 500000 gens
-const unsigned MAX_UNCHANGED = 1; // breaks the loop after 1 unchanged check(s)
+const unsigned MAX_UNCHANGED = 100; // breaks the loop after 100 unchanged check(s)
 const unsigned X_INTVL = 100;     // exchange best individuals at every 100 generations
 const unsigned X_NUMBER = 2;      // exchange top 2 best
 
@@ -69,12 +69,15 @@ bool Lab2(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
 
     int elapsed = ELAPSED;
     if (elapsed >= P.time_limit) {
-      cout << "Tempo máximo de " << P.time_limit << "s atingido." << endl;
+      cout << "\nTempo máximo de " << P.time_limit << "s atingido." << endl;
       break;
     }
     printf("\r-> generation %d - %ds", generation, elapsed);
     cout << std::flush;
   } while (generation < MAX_GENS and unchanged_checks < MAX_UNCHANGED);
+
+  if (unchanged_checks == MAX_UNCHANGED)
+    cout << "\n" << generation << " gerações sem melhora." << endl;
 
   if (improved) Sol = runSol;
   return improved;
