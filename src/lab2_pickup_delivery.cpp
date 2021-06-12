@@ -46,7 +46,7 @@ bool Lab2(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   // Initialize the BRKGA-based heuristic:
   BRKGA<PickupDeliveryDecoder, MTRand> algorithm(n, p, pe, pm, rhoe, decoder,
                                                  rng, K, MAXT);
-  int unchanged_checks = 0, reset_count = 0;
+  unsigned unchanged_checks = 0, reset_count = 0;
   DNodeVector runSol(P.nnodes);
   unsigned generation = 0; // current generation
   do {
@@ -82,7 +82,7 @@ bool Lab2(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   } while (generation < MAX_GENS and unchanged_checks < MAX_UNCHANGED);
 
   if (unchanged_checks == MAX_UNCHANGED)
-    cout << "\n" << generation << " gerações sem melhora." << endl;
+    cout << "\n" << MAX_UNCHANGED * X_INTVL << " gerações sem melhora." << endl;
   else
     cout << "\nFim das" << MAX_GENS << " gerações." << endl;
 
