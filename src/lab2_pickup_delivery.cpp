@@ -15,7 +15,6 @@
 #include <string>
 
 const long unsigned seed = 0; // seed to the random number generator
-const unsigned p = 1000;      // size of population
 const double pe = 0.20;       // fraction of population to be the elite-set
 const double pm = 0.10;       // fraction of population to be replaced by mutants
 const double rhoe = 0.70;     // probability that offspring inherit an allele from elite parent
@@ -40,31 +39,37 @@ bool Lab2(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   genArbLB(P, LB);
 
   const unsigned n = 2 * P.npairs; // size of chromosomes
+  const unsigned p = 2 * n;        // size of population
+  const unsigned k = 2 * n;        // restart strategy parameter
   PickupDeliveryDecoder decoder(P);
   MTRand rng(seed); // initialize the random number generator
   // Initialize the BRKGA-based heuristic:
   BRKGA<PickupDeliveryDecoder, MTRand> algorithm(n, p, pe, pm, rhoe, decoder,
                                                  rng, K, MAXT);
-  int unchanged_checks = 0;
+  int unchanged_checks = 0, reset_count = 0;
   DNodeVector runSol(P.nnodes);
   unsigned generation = 0; // current generation
   do {
-    algorithm.evolve(X_INTVL); // evolve the population for one generation
+    algorithm.evolve(X_INTVL); // evolve the population for X_INTVL generations
     generation += X_INTVL;
     algorithm.exchangeElite(X_NUMBER); // exchange top individuals
 
     // Check for new UB:
     unchanged_checks++;
+    reset_count++;
     double best_val_found = algorithm.getBestFitness();
     if (best_val_found < UB) {
       improved = true;
-      unchanged_checks = 0;
+      unchanged_checks = reset_count = 0;
       UB = best_val_found;
       decoder.decode(algorithm.getBestChromosome(), runSol);
       NEW_UB_MESSAGE(runSol);
       // When on large instances the local search may lead to quick improves:
       if (P.npairs >= 15)
         local_search(P, LB, UB, runSol);
+    } else if (reset_count >= k) { // restart(k) strategy
+      reset_count = 0;
+      algorithm.reset();
     }
 
     int elapsed = ELAPSED;
@@ -78,6 +83,8 @@ bool Lab2(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
 
   if (unchanged_checks == MAX_UNCHANGED)
     cout << "\n" << generation << " gerações sem melhora." << endl;
+  else
+    cout << "\nFim das" << MAX_GENS << " gerações." << endl;
 
   if (improved) Sol = runSol;
   return improved;
