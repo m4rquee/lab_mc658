@@ -7,8 +7,10 @@
 #include <vector>
 
 class PickupDeliveryDecoder {
+  Pickup_Delivery_Instance &P;
+
 public:
-  PickupDeliveryDecoder();
+  explicit PickupDeliveryDecoder(Pickup_Delivery_Instance &P);
   ~PickupDeliveryDecoder();
 
   double decode(const std::vector<double> &chromosome) const;

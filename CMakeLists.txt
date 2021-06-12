@@ -22,7 +22,7 @@ add_library(MY_LIB src/mygraphlib.cpp src/geompack.cpp src/myutils.cpp
 link_directories(${CMAKE_SOURCE_DIR}/lemon/lemon-1.3.1/lib)
 
 # Compiler flags
-set(CMAKE_CXX_FLAGS "-m64 -Ofast -Wall -std=c++11 -D_GLIBCXX_USE_CXX11_ABI=0 -Wunused-local-typedefs -lemon")
+set(CMAKE_CXX_FLAGS "-m64 -Ofast -Wall -std=c++11 -D_GLIBCXX_USE_CXX11_ABI=0 -Wunused-local-typedefs -lemon -fopenmp")
 
 # Target executable and linking
 add_executable(lab1_pickup_delivery src/lab1_pickup_delivery.cpp)

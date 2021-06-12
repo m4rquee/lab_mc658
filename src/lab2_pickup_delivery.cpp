@@ -31,7 +31,7 @@ bool Lab2(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   P.start_counter(); // fixes the start time point
 
   const unsigned n = 2 * P.npairs; // size of chromosomes
-  PickupDeliveryDecoder decoder;
+  PickupDeliveryDecoder decoder(P);
   MTRand rng(seed); // initialize the random number generator
   // Initialize the BRKGA-based heuristic:
   BRKGA<PickupDeliveryDecoder, MTRand> algorithm(n, p, pe, pm, rhoe, decoder,
@@ -113,7 +113,7 @@ int main(int argc, char *argv[]) {
   PrintInstanceInfo(P);
 
   double LB = 0, UB = MY_INF; // considere MY_INF como infinito.
-  DNodeVector Solucao;
+  DNodeVector Solucao(P.nnodes);
 
   bool melhorou = Lab2(P, LB, UB, Solucao);
 
