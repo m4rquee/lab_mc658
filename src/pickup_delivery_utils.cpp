@@ -198,23 +198,39 @@ bool can_swap(Pickup_Delivery_Instance &P, DNodeVector &Sol, int i, int j) {
   return true; // can swap the nodes
 }
 
+inline double swap_update(Pickup_Delivery_Instance &P, DNodeVector &Sol, int i,
+                          int j) {
+  double removed_arcs_weight =
+      P.weight_map[Sol[i - 1]][Sol[i]] + P.weight_map[Sol[i]][Sol[i + 1]] +
+      P.weight_map[Sol[j - 1]][Sol[j]] + P.weight_map[Sol[j]][Sol[j + 1]];
+  swap(Sol[i], Sol[j]);
+  double added_arcs_weight =
+      P.weight_map[Sol[i - 1]][Sol[i]] + P.weight_map[Sol[i]][Sol[i + 1]] +
+      P.weight_map[Sol[j - 1]][Sol[j]] + P.weight_map[Sol[j]][Sol[j + 1]];
+  return added_arcs_weight - removed_arcs_weight;
+}
+
 bool _local_search(Pickup_Delivery_Instance &P, double &LB, double &UB,
                    DNodeVector &Sol) {
   bool improved = false;
-  double new_cost;
+  double best_cost, curr_cost;
+  best_cost = curr_cost = route_cost(P, Sol);
   int n = P.nnodes - 2;
   // Search from end to begin because the heavier arcs are there:
   for (int i = n; i >= 1; i--)
     for (int j = i - 1; j >= 1; j--)
       if (can_swap(P, Sol, j, i)) { // the first index must be the smaller one
-        swap(Sol[i], Sol[j]);
-        new_cost = route_cost(P, Sol);
-        if (new_cost < UB) { // found a better solution
+        curr_cost += swap_update(P, Sol, i, j); // evaluate and swap the nodes
+        if (curr_cost < UB) { // found a better UB solution
           improved = true;
-          UB = new_cost;
+          UB = best_cost = curr_cost;
           NEW_UB_MESSAGE(Sol);
-        } else
-          swap(Sol[i], Sol[j]); // reset
+        } else if (curr_cost < best_cost) // just improved the solution
+          best_cost = curr_cost;
+        else { // reset
+          swap(Sol[i], Sol[j]);
+          curr_cost = best_cost;
+        }
       }
   return improved;
 }
