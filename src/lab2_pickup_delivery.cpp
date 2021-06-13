@@ -20,7 +20,7 @@ const double rhoe = 0.70;     // probability that offspring inherit an allele fr
 const unsigned K = 3;         // number of independent populations
 const unsigned MAXT = 4;      // number of threads for parallel decoding
 const unsigned X_NUMBER = 2;  // exchange top 2 best
-const unsigned K_MAX = 15000; // maximum value for the restart(k) strategy
+const unsigned K_MAX = 10000; // maximum value for the restart(k) strategy
 
 // On big instances do local search after found a solution at least this optimal:
 const double lsearch_threshold = 0.4;
@@ -39,8 +39,10 @@ bool Lab2(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   cout << "BRKGA Variable Informations" << endl;
   const unsigned n = 2 * P.npairs; // size of chromosomes
   const unsigned p = (P.npairs > 100 ? 1 : 2) * n;   // size of population
-  const unsigned k_prime = (P.npairs > 10 ? 250 : 10) * n; // candidate for k
-  const unsigned k = min(k_prime, K_MAX); // restart strategy parameter
+  const unsigned k_prime = (P.npairs >= 100 ? 100 :
+                            P.npairs > 10 ? 250 : 10) * n; // candidate for k
+  const unsigned k = P.npairs >= 100 ?
+                     min(k_prime, K_MAX) : k_prime; // restart strategy parameter
   cout << "\tsize of chromosomes       : n = " << n << endl;
   cout << "\tsize of population        : p = " << p << endl;
   cout << "\trestart strategy parameter: k = " << k << endl << endl;
@@ -114,7 +116,7 @@ bool Lab2(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
     cout << "\n\nFim após " << MAX_UNCHANGED * X_INTVL
          << " gerações sem melhora." << endl;
   else
-    cout << "\n\nFim das " << MAX_GENS << " gerações." << endl;
+    cout << "\n\nFim das " << generation << " gerações." << endl;
 
   if (improved) Sol = runSol;
   return improved;
