@@ -21,7 +21,7 @@ void PickupDeliveryDecoder::decode(const vector<double> &chromosome, DNodeVector
 
   vector<pair<double, unsigned>> pic_ranking(P.npairs);
   vector<pair<double, unsigned>> del_ranking(P.npairs);
-  for (unsigned i = 0; i < P.npairs; i++) {
+  for (int i = 0; i < P.npairs; i++) {
     pic_ranking[i] = pair<double, unsigned>(chromosome[i], i);
     del_ranking[i] = pair<double, unsigned>(chromosome[P.npairs + i], i);
   }
@@ -31,7 +31,7 @@ void PickupDeliveryDecoder::decode(const vector<double> &chromosome, DNodeVector
   sort(del_ranking.begin(), del_ranking.end());
 
   // Consume from the sorted rankings to produce a solution:
-  unsigned i, p, d;
+  int i, p, d;
   for (i = 1, p = 0, d = 0; i <= 2 * P.npairs and p < P.npairs; i++) {
     DNode &currDel = P.delivery[del_ranking[d].second];
     // Puts the node with higher rank first (if is a delivery, then it's
