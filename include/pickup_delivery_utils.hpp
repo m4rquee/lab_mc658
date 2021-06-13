@@ -59,11 +59,12 @@ public:
   const int npairs;
   DNodeVector &pickup;
   DNodeVector &delivery;
-  Digraph::NodeMap<DNode> &del_pickup;
-  map<DNode, vector<Arc>> ordered_arcs;
+  Digraph::NodeMap<DNode> &del_pickup;  // maps a delivery to its pickup
+  map<DNode, vector<Arc>> ordered_arcs; // out arcs of a node ordered by weight
   DNodeBoolMap &is_pickup;
   time_point start;
   const int time_limit;
+  map<DNode, map<DNode, double>> weight_map; // used for fast weight lookup
 };
 
 void PrintInstanceInfo(Pickup_Delivery_Instance &P);
@@ -78,7 +79,7 @@ bool ReadPickupDeliveryDigraph(const string &filename, Digraph &g,
                                Digraph::NodeMap<DNode> &del_pickup,
                                DNodeBoolMap &is_pickup);
 
-double route_cost(const Pickup_Delivery_Instance &P, const DNodeVector &Sol);
+double route_cost(Pickup_Delivery_Instance &P, const DNodeVector &Sol);
 
 bool ViewPickupDeliverySolution(Pickup_Delivery_Instance &P, double &LB,
                                 double &UB, DNodeVector &Sol,

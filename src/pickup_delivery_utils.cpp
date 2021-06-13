@@ -16,8 +16,10 @@ Pickup_Delivery_Instance::Pickup_Delivery_Instance(
   // Sort the nodes out arcs for each node:
   for (DNodeIt n(g); n != INVALID; ++n) {
     ordered_arcs[n].reserve(npairs);
-    for (OutArcIt a(g, n); a != INVALID; ++a) // add all out arcs to the heap
-      sorting_heap.push(a);
+    for (OutArcIt a(g, n); a != INVALID; ++a) {
+      sorting_heap.push(a);                   // add all out arcs to the heap
+      weight_map[n][g.target(a)] = weight[a]; // add all weights to a map
+    }
     while (!sorting_heap.empty()) { // sort the arcs by popping the heap
       ordered_arcs[n].push_back(sorting_heap.top());
       sorting_heap.pop();
@@ -126,18 +128,13 @@ bool ReadPickupDeliveryDigraph(const string &filename, Digraph &g,
   return true;
 }
 
-double route_cost(const Pickup_Delivery_Instance &P, const DNodeVector &Sol) {
+double route_cost(Pickup_Delivery_Instance &P, const DNodeVector &Sol) {
   double cost = 0.0;
-  bool valid = false;
-  for (int i = 1; i < P.nnodes; i++, valid = false) {
-    for (OutArcIt a(P.g, Sol[i - 1]); a != INVALID; ++a)
-      if (P.g.target(a) == Sol[i]) {
-        cost += P.weight[a];
-        valid = true;
-        break;
-      }
-    if (!valid) return MY_INF; // the route is invalid
-  }
+  for (int i = 1; i < P.nnodes; i++)
+    if (P.weight_map[Sol[i - 1]].count(Sol[i]) == 0)
+      return MY_INF; // the route is invalid
+    else
+      cost += P.weight_map[Sol[i - 1]][Sol[i]];
   return cost;
 }
 
