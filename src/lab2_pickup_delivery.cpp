@@ -19,9 +19,11 @@ const double pm = 0.10;       // fraction of population to be replaced by mutant
 const double rhoe = 0.70;     // probability that offspring inherit an allele from elite parent
 const unsigned K = 3;         // number of independent populations
 const unsigned MAXT = 4;      // number of threads for parallel decoding
-const unsigned X_INTVL = 100; // exchange best individuals at every 100 generations
 const unsigned X_NUMBER = 2;  // exchange top 2 best
 const unsigned K_MAX = 15000; // maximum value for the restart(k) strategy
+
+// On big instances do local search after found a solution at least this optimal:
+const double lsearch_threshold = 0.4;
 
 inline void genArbLB(Pickup_Delivery_Instance &P, double &LB) {
   MinCostArb arb_solver(P.g, P.weight); // generates a min arborescence to derive a LB
@@ -53,8 +55,11 @@ bool Lab2(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   const unsigned MAX_GENS =
       P.npairs >= 15 ? UINT_MAX : // on big instances limit only by time
       500000;                     // run for up to 500000 gens
+  // Exchange best individuals at every X_INTVL generations:
+  const unsigned X_INTVL = P.npairs > 100 ? 50 : 100;
   cout << "\tunchanged checks before break: MAX_UNCHANGED = " << MAX_UNCHANGED << endl;
   cout << "\tgenerations maximum          : MAX_GENS = " << MAX_GENS << endl;
+  cout << "\tbest individuals exchange    : X_INTVL = " << X_INTVL << endl;
 
   PickupDeliveryDecoder decoder(P);
   MTRand rng(seed); // initialize the random number generator
@@ -87,7 +92,8 @@ bool Lab2(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
       NEW_UB_MESSAGE(runSol);
       // When on large instances the local search may lead to quick improves:
       if (P.npairs >= 15)
-        local_search(P, LB, UB, runSol);
+        if (P.npairs <= 100 or LB / UB > lsearch_threshold) // the local search become slow
+          local_search(P, LB, UB, runSol);
     } else if (reset_count * X_INTVL >= k) { // restart(k) strategy
       cout << "\nReset depois de " << reset_count * X_INTVL << " gerações sem melhora." << endl;
       reset_count = 0;
