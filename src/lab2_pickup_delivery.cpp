@@ -17,13 +17,10 @@ const long unsigned seed = 0; // seed to the random number generator
 const double pe = 0.20;       // fraction of population to be the elite-set
 const double pm = 0.10;       // fraction of population to be replaced by mutants
 const double rhoe = 0.70;     // probability that offspring inherit an allele from elite parent
-const unsigned K = 3;         // number of independent populations
+const unsigned I = 3;         // number of independent populations
 const unsigned MAXT = 4;      // number of threads for parallel decoding
 const unsigned X_NUMBER = 2;  // exchange top 2 best
-const unsigned K_MAX = 10000; // maximum value for the restart(k) strategy
-
-// On big instances do local search after found a solution at least this optimal:
-const double lsearch_threshold = 0.4;
+const unsigned K_MAX = 1500; // maximum value for the restart(k) strategy
 
 inline void genArbLB(Pickup_Delivery_Instance &P, double &LB) {
   MinCostArb arb_solver(P.g, P.weight); // generates a min arborescence to derive a LB
@@ -38,14 +35,15 @@ bool Lab2(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
 
   cout << "BRKGA Variable Informations" << endl;
   const unsigned n = 2 * P.npairs; // size of chromosomes
-  const unsigned p = (P.npairs > 100 ? 1 : 2) * n;   // size of population
+  const unsigned p = (P.npairs > 100 ? 0.5 : 2) * n; // size of population
   const unsigned k_prime = (P.npairs >= 100 ? 100 :
                             P.npairs > 10 ? 250 : 10) * n; // candidate for k
   const unsigned k = P.npairs >= 100 ?
                      min(k_prime, K_MAX) : k_prime; // restart strategy parameter
-  cout << "\tsize of chromosomes       : n = " << n << endl;
-  cout << "\tsize of population        : p = " << p << endl;
-  cout << "\trestart strategy parameter: k = " << k << endl << endl;
+  cout << "\tsize of chromosomes              : n = " << n << endl;
+  cout << "\tsize of population               : p = " << p << endl;
+  cout << "\tnumber of independent populations: I = " << I << endl;
+  cout << "\trestart strategy parameter       : k = " << k << endl << endl;
 
   // Breaks the loop after MAX_UNCHANGED unimproved check(s):
   const unsigned MAX_UNCHANGED = P.npairs == 5 ? 1 :
@@ -67,7 +65,7 @@ bool Lab2(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   MTRand rng(seed); // initialize the random number generator
   // Initialize the BRKGA-based heuristic:
   BRKGA<PickupDeliveryDecoder, MTRand> algorithm(n, p, pe, pm, rhoe, decoder,
-                                                 rng, K, MAXT);
+                                                 rng, I, MAXT);
   unsigned unchanged_checks = 0, reset_count = 0;
   DNodeVector runSol(P.nnodes); // current aux solution vector
   double best_running = MY_INF; // best fitness since last restart
@@ -82,20 +80,22 @@ bool Lab2(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
     unchanged_checks++;
     reset_count++;
     double best_val_found = algorithm.getBestFitness();
-    if (best_val_found < best_running) {
+    if (best_val_found < best_running) { // compare only with this current run
       reset_count = 0;
       best_running = best_val_found;
-    }
-    if (best_val_found < UB) {
-      improved = true;
-      unchanged_checks = 0;
-      UB = best_val_found;
       decoder.decode(algorithm.getBestChromosome(), runSol);
-      NEW_UB_MESSAGE(runSol);
+      if (best_val_found < UB) {
+        improved = true;
+        unchanged_checks = 0;
+        UB = best_val_found;
+        Sol = runSol; // saves this better solution
+        NEW_UB_MESSAGE(runSol);
+        cout << "LB: " << LB << endl;
+      }
       // When on large instances the local search may lead to quick improves:
       if (P.npairs >= 15)
-        if (P.npairs <= 100 or LB / UB > lsearch_threshold) // the local search become slow
-          local_search(P, LB, UB, runSol);
+        if (local_search(P, LB, UB, runSol))
+          Sol = runSol; // found an even better solution
     } else if (reset_count * X_INTVL >= k) { // restart(k) strategy
       cout << "\nReset depois de " << reset_count * X_INTVL << " gerações sem melhora." << endl;
       reset_count = 0;
@@ -118,7 +118,6 @@ bool Lab2(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   else
     cout << "\n\nFim das " << generation << " gerações." << endl;
 
-  if (improved) Sol = runSol;
   return improved;
 }
 
