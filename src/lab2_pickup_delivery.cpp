@@ -144,9 +144,9 @@ int main(int argc, char *argv[]) {
   // set_pdfreader("open -a Skim.app");
   set_pdfreader("xdg-open"); // the Linux will choose the default one
   // double cutoff;   // used to prune non promissing branches (of the B&B tree)
-  if (argc != 3) {
+  if (argc < 3) {
     cout << endl
-         << "Laboratorio de MC658: Rota com coleta e entrega de peso minimmo,"
+         << "Laboratorio de MC658: Rota com coleta e entrega de peso minimo,"
          << endl
          << "the st-shortest path problem." << endl
          << endl
@@ -165,6 +165,11 @@ int main(int argc, char *argv[]) {
 
   digraph_filename = argv[1];
   maxtime = atoi(argv[2]);
+  double LB = 0, UB = MY_INF; // considere MY_INF como infinito.
+  if (argc >= 4)
+    LB = atof(argv[3]);
+  if (argc >= 5)
+    UB = atof(argv[4]);
   DNodeVector pickup, delivery;
   DNode source, target;
   int npairs;
@@ -180,7 +185,6 @@ int main(int argc, char *argv[]) {
                              pickup, delivery, del_pickup, is_pickup, maxtime);
   PrintInstanceInfo(P);
 
-  double LB = 0, UB = MY_INF; // considere MY_INF como infinito.
   DNodeVector Solucao(P.nnodes);
 
   bool melhorou = Lab2(P, LB, UB, Solucao);
