@@ -102,7 +102,7 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
     model.addConstr(in_degree_expr == 1);
   }
 
-  unsigned M = 2 * P.nnodes;
+  unsigned M = P.nnodes;
   for (ArcIt e(P.g); e != INVALID; ++e) {
     // Arcs only between adjacent nodes:
     model.addConstr(p_v[P.g.target(e)] - p_v[P.g.source(e)] + M * (1 - x_e[e]) >= x_e[e]);
