@@ -6,11 +6,13 @@
 #include "pickup_delivery_utils.hpp"
 #include <cstdio>
 #include <cstdlib>
+#include <gurobi_c++.h>
 #include <iostream>
 #include <lemon/list_graph.h>
+#include <solver.h>
 #include <string>
 
-const long unsigned seed = 0; // seed to the random number generator
+const long unsigned seed = 42; // seed to the random number generator
 
 inline void genArbLB(Pickup_Delivery_Instance &P, double &LB) {
   MinCostArb arb_solver(P.g, P.weight); // generates a min arborescence to derive a LB
@@ -22,6 +24,106 @@ inline void genArbLB(Pickup_Delivery_Instance &P, double &LB) {
 bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol) {
   bool improved = false;
   genArbLB(P, LB);
+
+  // Gurobi ILP problem setup:
+  GRBEnv env = GRBEnv();
+  env.set(GRB_IntParam_Seed, seed);
+  env.set(GRB_DoubleParam_TimeLimit, P.time_limit);
+  GRBModel model = GRBModel(env);
+  model.set(GRB_StringAttr_ModelName, "Pickup Delivery Route");
+  model.set(GRB_IntAttr_ModelSense, GRB_MINIMIZE);
+
+  // ILP problem variables: ----------------------------------------------------
+  Digraph::ArcMap<GRBVar> x_e(P.g); // binary variables for each arc
+  // Binary variables that indicates if a node is in a position:
+  Digraph::NodeMap<map<unsigned, GRBVar>> x_vi(P.g);
+  Digraph::NodeMap<GRBVar> p_v(P.g); // position of each node in the solution
+  for (ArcIt e(P.g); e != INVALID; ++e) {
+    char name[100];
+    sprintf(name, "x_(%s,%s)", P.vname[P.g.source(e)].c_str(),
+            P.vname[P.g.target(e)].c_str());
+    x_e[e] = model.addVar(0.0, 1.0, P.weight[e], GRB_BINARY, name);
+  }
+  for (DNodeIt v(P.g); v != INVALID; ++v) {
+    char name[100];
+    sprintf(name, "p_%s", P.vname[v].c_str());
+    p_v[v] = model.addVar(0.0, P.nnodes - 1, 0, GRB_INTEGER, name);
+    for (int pos = 0; pos < P.nnodes; pos++) {
+      sprintf(name, "x_%s_%d", P.vname[v].c_str(), pos);
+      x_vi[v][pos] = model.addVar(0.0, 1.0, 0, GRB_BINARY, name);
+    }
+  }
+  model.update(); // run update to use model inserted variables
+
+  // ILP problem restrictions: -------------------------------------------------
+  vector<GRBLinExpr> pos_unique_node_expr(P.nnodes);
+  for (DNodeIt v(P.g); v != INVALID; ++v) {
+    GRBLinExpr node_unique_pos_expr;
+    for (int pos = 0; pos < P.nnodes; pos++) {
+      node_unique_pos_expr += x_vi[v][pos];
+      pos_unique_node_expr[pos] += x_vi[v][pos];
+    }
+    model.addConstr(node_unique_pos_expr == 1); // each node must be in a single position
+  }
+  for (int pos = 0; pos < P.nnodes; pos++)
+    model.addConstr(pos_unique_node_expr[pos] == 1); // each position must contain a single node
+
+  // The source and the target are fixed:
+  model.addConstr(p_v[P.source] == 0);
+  model.addConstr(x_vi[P.source][0] == 1);
+  model.addConstr(p_v[P.target] == P.nnodes - 1);
+  model.addConstr(x_vi[P.target][P.nnodes - 1] == 1);
+
+  for (DNodeIt v(P.g); v != INVALID; ++v) {
+    if (v == P.source or v == P.target) continue; // they are already fixed
+    GRBLinExpr pv_and_x_vi_link_expr;
+    for (int pos = 0; pos < P.nnodes; pos++)
+      pv_and_x_vi_link_expr += pos * x_vi[v][pos];
+    model.addConstr(p_v[v] == pv_and_x_vi_link_expr); // the two position representations must agree
+  }
+
+  for (const auto &delivery : P.delivery)
+    model.addConstr(p_v[P.del_pickup[delivery]] <= p_v[delivery] - 1); // the ith pickup shows up before the ith delivery
+
+  GRBLinExpr s_out_degree_expr;
+  for (OutArcIt e(P.g, P.source); e != INVALID; ++e) s_out_degree_expr += x_e[e];
+  model.addConstr(s_out_degree_expr == 1); // the source is the first node
+  GRBLinExpr t_in_degree_expr;
+  for (InArcIt e(P.g, P.target); e != INVALID; ++e) t_in_degree_expr += x_e[e];
+  model.addConstr(t_in_degree_expr == 1); // the target is the last node
+
+  for (DNodeIt v(P.g); v != INVALID; ++v) {
+    if (v == P.source or v == P.target) continue;
+    GRBLinExpr out_degree_expr, in_degree_expr;
+    for (OutArcIt e(P.g, v); e != INVALID; ++e) out_degree_expr += x_e[e];
+    for (InArcIt e(P.g, v); e != INVALID; ++e) in_degree_expr += x_e[e];
+    // The in/out-degree of each internal node is one:
+    model.addConstr(out_degree_expr == 1);
+    model.addConstr(in_degree_expr == 1);
+  }
+
+  unsigned M = 2 * P.nnodes;
+  for (ArcIt e(P.g); e != INVALID; ++e) {
+    // Arcs only between adjacent nodes:
+    model.addConstr(p_v[P.g.target(e)] - p_v[P.g.source(e)] + M * (1 - x_e[e]) >= x_e[e]);
+    model.addConstr(p_v[P.g.target(e)] - p_v[P.g.source(e)] - M * (1 - x_e[e]) <= x_e[e]);
+  }
+
+  // ILP solving: --------------------------------------------------------------
+  model.optimize();
+  if (model.get(GRB_IntAttr_SolCount) == 0)  // if could not obtain a solution
+    throw invalid_argument("Could not obtain a solution.");
+  double solution = GetModelValue(model);
+
+  if (solution < UB) {
+    improved = true;
+    UB = solution;
+    for (DNodeIt v(P.g); v != INVALID; ++v) // saves this better solution
+      Sol[(unsigned)std::round(p_v[v].get(GRB_DoubleAttr_X))] = v;
+    NEW_UB_MESSAGE(Sol);
+    cout << "LB: " << LB << "- UB: " << UB << endl;
+  }
+
   return improved;
 }
 
@@ -91,12 +193,17 @@ int main(int argc, char *argv[]) {
 
   DNodeVector Solucao(P.nnodes);
 
-  bool melhorou = Lab3(P, LB, UB, Solucao);
+  try {
+    bool melhorou = Lab3(P, LB, UB, Solucao);
 
-  if (melhorou) {
-    ViewPickupDeliverySolution(P, LB, UB, Solucao, "Solucao do Lab.");
-    PrintSolution(P, Solucao, "\nSolucao do Lab3.");
-    cout << "custo: " << UB << endl;
+    if (melhorou) {
+      ViewPickupDeliverySolution(P, LB, UB, Solucao, "Solucao do Lab.");
+      PrintSolution(P, Solucao, "\nSolucao do Lab3.");
+      cout << "custo: " << UB << endl;
+    }
+  } catch (std::exception &e) {
+    cerr << "\nException: " << e.what() << endl;
+    return 1;
   }
   return 0;
 }
