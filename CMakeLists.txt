@@ -13,6 +13,7 @@ set(default_build_type "Release")
 include_directories("include")
 include_directories("lemon/lemon-1.3.1/include")
 include_directories("brkga/src")
+include_directories($ENV{GUROBI_HOME}/include)
 
 # Utils used in all targets
 add_library(MY_LIB src/mygraphlib.cpp src/geompack.cpp src/myutils.cpp
@@ -20,6 +21,9 @@ add_library(MY_LIB src/mygraphlib.cpp src/geompack.cpp src/myutils.cpp
 
 # Lemon lib directory
 link_directories(${CMAKE_SOURCE_DIR}/lemon/lemon-1.3.1/lib)
+
+# Gurobi lib directory
+link_directories($ENV{GUROBI_HOME}/lib)
 
 # Compiler flags
 set(CMAKE_CXX_FLAGS "-m64 -Ofast -Wall -std=c++11 -D_GLIBCXX_USE_CXX11_ABI=0 -Wunused-local-typedefs -lemon -fopenmp")
@@ -34,3 +38,9 @@ add_executable(lab2_pickup_delivery src/lab2_pickup_delivery.cpp src/PickupDeliv
 target_link_libraries(lab2_pickup_delivery m)
 target_link_libraries(lab2_pickup_delivery pthread)
 target_link_libraries(lab2_pickup_delivery MY_LIB)
+
+add_executable(lab3_pickup_delivery src/lab3_pickup_delivery.cpp)
+target_link_libraries(lab3_pickup_delivery m)
+target_link_libraries(lab3_pickup_delivery pthread)
+target_link_libraries(lab3_pickup_delivery MY_LIB)
+target_link_libraries(lab3_pickup_delivery gurobi_c++ gurobi91)
