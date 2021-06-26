@@ -37,7 +37,6 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   Digraph::ArcMap<GRBVar> x_e(P.g); // binary variables for each arc
   // Binary variables that indicates if a node is in a position:
   Digraph::NodeMap<map<unsigned, GRBVar>> x_vi(P.g);
-  Digraph::NodeMap<GRBVar> p_v(P.g); // position of each node in the solution
   for (ArcIt e(P.g); e != INVALID; ++e) {
     char name[100];
     sprintf(name, "x_(%s,%s)", P.vname[P.g.source(e)].c_str(),
@@ -47,7 +46,6 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   for (DNodeIt v(P.g); v != INVALID; ++v) {
     char name[100];
     sprintf(name, "p_%s", P.vname[v].c_str());
-    p_v[v] = model.addVar(0.0, P.nnodes - 1, 0, GRB_INTEGER, name);
     for (int pos = 0; pos < P.nnodes; pos++) {
       sprintf(name, "x_%s_%d", P.vname[v].c_str(), pos);
       x_vi[v][pos] = model.addVar(0.0, 1.0, 0, GRB_BINARY, name);
@@ -69,21 +67,18 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
     model.addConstr(pos_unique_node_expr[pos] == 1); // each position must contain a single node
 
   // The source and the target are fixed:
-  model.addConstr(p_v[P.source] == 0);
   model.addConstr(x_vi[P.source][0] == 1);
-  model.addConstr(p_v[P.target] == P.nnodes - 1);
   model.addConstr(x_vi[P.target][P.nnodes - 1] == 1);
 
-  for (DNodeIt v(P.g); v != INVALID; ++v) {
-    if (v == P.source or v == P.target) continue; // they are already fixed
-    GRBLinExpr pv_and_x_vi_link_expr;
-    for (int pos = 0; pos < P.nnodes; pos++)
-      pv_and_x_vi_link_expr += pos * x_vi[v][pos];
-    model.addConstr(p_v[v] == pv_and_x_vi_link_expr); // the two position representations must agree
+  for (const auto &delivery : P.delivery) {
+    DNode pickup = P.del_pickup[delivery];
+    GRBLinExpr pic_pos_expr, del_pos_expr;
+    for (int pos = 0; pos < P.nnodes; pos++) { // converts to position index
+      pic_pos_expr += pos * x_vi[pickup][pos];
+      del_pos_expr += pos * x_vi[delivery][pos];
+    }
+    model.addConstr(pic_pos_expr <= del_pos_expr - 1); // the ith pickup shows up before the ith delivery
   }
-
-  for (const auto &delivery : P.delivery)
-    model.addConstr(p_v[P.del_pickup[delivery]] <= p_v[delivery] - 1); // the ith pickup shows up before the ith delivery
 
   GRBLinExpr s_out_degree_expr;
   for (OutArcIt e(P.g, P.source); e != INVALID; ++e) s_out_degree_expr += x_e[e];
@@ -104,9 +99,16 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
 
   unsigned M = P.nnodes;
   for (ArcIt e(P.g); e != INVALID; ++e) {
+    DNode u = P.g.source(e), v = P.g.target(e);
+    GRBLinExpr u_pos_expr, v_pos_expr;
+    for (int pos = 0; pos < P.nnodes; pos++) { // converts to position index
+      u_pos_expr += pos * x_vi[u][pos];
+      v_pos_expr += pos * x_vi[v][pos];
+    }
+
     // Arcs only between adjacent nodes:
-    model.addConstr(p_v[P.g.target(e)] - p_v[P.g.source(e)] + M * (1 - x_e[e]) >= x_e[e]);
-    model.addConstr(p_v[P.g.target(e)] - p_v[P.g.source(e)] - M * (1 - x_e[e]) <= x_e[e]);
+    model.addConstr(v_pos_expr - u_pos_expr + M * (1 - x_e[e]) >= x_e[e]);
+    model.addConstr(v_pos_expr - u_pos_expr - M * (1 - x_e[e]) <= x_e[e]);
   }
 
   // ILP solving: --------------------------------------------------------------
@@ -118,8 +120,13 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   if (solution < UB) {
     improved = true;
     UB = solution;
-    for (DNodeIt v(P.g); v != INVALID; ++v) // saves this better solution
-      Sol[(unsigned)std::round(p_v[v].get(GRB_DoubleAttr_X))] = v;
+    // Saves this better solution:
+    for (DNodeIt v(P.g); v != INVALID; ++v)
+      for (int pos = 0; pos < P.nnodes; pos++) // finds this node position
+        if (std::round(x_vi[v][pos].get(GRB_DoubleAttr_X)) == 1) {
+          Sol[pos] = v;
+          break;
+        }
     NEW_UB_MESSAGE(Sol);
     cout << "LB: " << LB << "- UB: " << UB << endl;
   }
