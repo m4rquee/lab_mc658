@@ -109,6 +109,7 @@ typedef Graph::EdgeMap<Edge> EdgeEdgeMap;
 typedef Graph::EdgeMap<Node> EdgeNodeMap;
 typedef Graph::EdgeMap<bool> EdgeBoolMap;
 typedef Preflow<Graph, EdgeValueMap> PFType;
+const PFType::Tolerance DefTol(MY_EPS);
 
 
 typedef ListDigraph Digraph;
@@ -121,6 +122,8 @@ typedef Digraph::ArcMap<int> ArcIntMap;
 typedef Digraph::ArcMap<string> ArcStringMap;
 typedef Digraph::ArcMap<int> ArcColorMap;
 typedef Digraph::ArcMap<bool> ArcBoolMap;
+typedef Preflow<Digraph, ArcValueMap> DiPFType;
+const DiPFType::Tolerance DefDiTol(MY_EPS);
 
 typedef Digraph::Node DNode;
 typedef Digraph::NodeIt DNodeIt;

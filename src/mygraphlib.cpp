@@ -744,7 +744,8 @@ bool GenerateRandomGraph(Graph &g,
 // have value true).
 double MinCut(Graph &g, EdgeValueMap &weight, Node &s,Node &t, CutMap &cut)
 {
-  Preflow<Graph, EdgeValueMap> pf(g, weight, s, t);
+  PFType pf(g, weight, s, t);
+  pf.tolerance(DefTol);
   pf.runMinCut();
   pf.minCutMap(cut);
   return (pf.flowValue());
@@ -755,7 +756,8 @@ double MinCut(Graph &g, EdgeValueMap &weight, Node &s,Node &t, CutMap &cut)
 // vector: nodes v in the same side of s have cut[v]=true, otherwise cut[v]=false.
 double DiMinCut(Digraph &g, ArcValueMap &weight, DNode &s,DNode &t, DCutMap &vcut)
 {
-  Preflow<Digraph, ArcValueMap> preflow_test(g, weight, s, t);
+  DiPFType preflow_test(g, weight, s, t);
+  preflow_test.tolerance(DefDiTol);
   preflow_test.run();
   preflow_test.minCutMap(vcut);
   return (preflow_test.flowValue());
