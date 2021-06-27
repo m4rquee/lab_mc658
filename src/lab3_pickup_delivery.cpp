@@ -14,21 +14,25 @@
 
 const long unsigned seed = 42; // seed to the random number generator
 
-inline void genArbLB(Pickup_Delivery_Instance &P, double &LB) {
-  MinCostArb arb_solver(P.g, P.weight); // generates a min arborescence to derive a LB
+inline bool arb_heuristic(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol) {
+  // Generates the arborescence that will guide the route creation:
+  MinCostArb arb_solver(P.g, P.weight);
   arb_solver.run(P.source); // root the arborescence in the source
   // As a spanning digraph rooted at the source this is itself a LB:
   LB = max(LB, arb_solver.arborescenceCost());
+  bool improved = arborescence_heuristic(P, LB, UB, Sol, arb_solver);
+  return local_search(P, LB, UB, Sol) or improved;
 }
 
 bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol) {
-  bool improved = false;
-  genArbLB(P, LB);
+  P.start_counter();
+  bool improved = arb_heuristic(P, LB, UB, Sol);
 
   // Gurobi ILP problem setup:
   GRBEnv env = GRBEnv();
   env.set(GRB_IntParam_Seed, seed);
   env.set(GRB_DoubleParam_TimeLimit, P.time_limit);
+  env.set(GRB_DoubleParam_Cutoff, UB); // set the know UB
   GRBModel model = GRBModel(env);
   model.set(GRB_StringAttr_ModelName, "Pickup Delivery Route");
   model.set(GRB_IntAttr_ModelSense, GRB_MINIMIZE);
@@ -38,11 +42,13 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   // Binary variables that indicates if a node is in a position:
   Digraph::NodeMap<map<unsigned, GRBVar>> x_vi(P.g);
   Digraph::NodeMap<GRBVar> p_v(P.g); // position of each node in the solution
+  GRBLinExpr LB_expr;
   for (ArcIt e(P.g); e != INVALID; ++e) {
     char name[100];
     sprintf(name, "x_(%s,%s)", P.vname[P.g.source(e)].c_str(),
             P.vname[P.g.target(e)].c_str());
     x_e[e] = model.addVar(0.0, 1.0, P.weight[e], GRB_BINARY, name);
+    LB_expr += P.weight[e] * x_e[e];
   }
   for (DNodeIt v(P.g); v != INVALID; ++v) {
     char name[100];
@@ -109,19 +115,20 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
     model.addConstr(p_v[P.g.target(e)] - p_v[P.g.source(e)] - M * (1 - x_e[e]) <= x_e[e]);
   }
 
-  // ILP solving: --------------------------------------------------------------
-  model.optimize();
-  if (model.get(GRB_IntAttr_SolCount) == 0)  // if could not obtain a solution
-    throw invalid_argument("Could not obtain a solution.");
-  double solution = GetModelValue(model);
+  model.addConstr(LB_expr >= LB, "cost >= LB"); // imposed LB
 
-  if (solution < UB) {
+  // ILP solving: --------------------------------------------------------------
+  model.optimize(); // trys to solve optimally within the time limit
+  if (model.get(GRB_IntAttr_SolCount) > 0) {  // a better solution was found
     improved = true;
-    UB = solution;
+    UB = GetModelValue(model);
     for (DNodeIt v(P.g); v != INVALID; ++v) // saves this better solution
       Sol[(unsigned)std::round(p_v[v].get(GRB_DoubleAttr_X))] = v;
+    if (model.get(GRB_IntAttr_Status) == GRB_OPTIMAL) // solved optimally
+      LB = UB;
+    else // can still improve
+      local_search(P, LB, UB, Sol);
     NEW_UB_MESSAGE(Sol);
-    cout << "LB: " << LB << "- UB: " << UB << endl;
   }
 
   return improved;
