@@ -7,6 +7,7 @@
 #include <queue>
 #include <lemon/min_cost_arborescence.h>
 
+#define EPS 2.0
 #define ELAPSED ((chrono::system_clock::now() - P.start).count() / 1E9)
 #define _NEW_UB_MESSAGE(SOL, MSG) {                                            \
     PrintSolution(P, SOL, MSG);                                                \
@@ -87,5 +88,8 @@ bool ViewPickupDeliverySolution(Pickup_Delivery_Instance &P, double &LB,
 
 bool local_search(Pickup_Delivery_Instance &P, double &LB, double &UB,
                   DNodeVector &Sol);
+
+bool arborescence_heuristic(Pickup_Delivery_Instance &P, double &LB, double &UB,
+                            DNodeVector &Sol, MinCostArb &solver);
 
 #endif // LAB_MC658_PICKUP_DELIVERY_UTILS_HPP
