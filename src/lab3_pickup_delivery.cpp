@@ -12,7 +12,54 @@
 #include <solver.h>
 #include <string>
 
+#define LAZY_ADD 100
+#define LAZY_START 10
 const long unsigned seed = 42; // seed to the random number generator
+
+class SubCycleElim : public GRBCallback {
+  const unsigned &M;
+  Pickup_Delivery_Instance &P;
+  Digraph::NodeMap<GRBVar> &p_v;
+  Digraph::ArcMap<GRBVar> &x_e;
+  double (GRBCallback::*solution_value)(GRBVar) = nullptr;
+
+public:
+  SubCycleElim(const unsigned int &m, Pickup_Delivery_Instance &p,
+                 Digraph::NodeMap<GRBVar> &p_v, Digraph::ArcMap<GRBVar> &x_e)
+      : M(m), P(p), p_v(p_v), x_e(x_e) {}
+
+protected:
+  void callback() {
+    // -------------------------------------------------------------------------
+    // Get the correct function to obtain the values of the lp variables:
+    if (where == GRB_CB_MIPSOL) // if this condition is true, all variables are integer
+      solution_value = &SubCycleElim::getSolution;
+    else if (where == GRB_CB_MIPNODE && // node with optimal fractional solution
+             getIntInfo(GRB_CB_MIPNODE_STATUS) == GRB_OPTIMAL)
+      solution_value = &SubCycleElim::getNodeRel;
+    else
+      return; // return, as this code do not take advantage of the other options
+
+    try {
+      int constrCount = 0;
+      for (ArcIt e(P.g); e != INVALID; ++e) {
+        const DNode &u = P.g.source(e), &v = P.g.target(e);
+        const int u_pos = (int)std::round((this->*solution_value)(p_v[u])),
+                  v_pos = (int)std::round((this->*solution_value)(p_v[v]));
+        if ((this->*solution_value)(x_e[e]) > 1 - MY_EPS) // this edge is used
+          if (abs(v_pos - u_pos) > 1) { // arc between nonadjacent nodes
+            // Arcs only between adjacent nodes:
+            addLazy(p_v[v] - p_v[u] + M * (1 - x_e[e]) >= x_e[e]);
+            addLazy(p_v[v] - p_v[u] - M * (1 - x_e[e]) <= x_e[e]);
+            constrCount += 2;
+            if (constrCount >= LAZY_ADD) break; // adds up to LAZY_ADD restrictions
+          }
+      }
+    } catch (std::exception &e) {
+      cout << "Error during callback: " << e.what() << endl;
+    }
+  }
+};
 
 inline bool arb_heuristic(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol) {
   // Generates the arborescence that will guide the route creation:
@@ -33,6 +80,8 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   env.set(GRB_IntParam_Seed, seed);
   env.set(GRB_DoubleParam_TimeLimit, P.time_limit);
   env.set(GRB_DoubleParam_Cutoff, UB); // set the know UB
+  if (P.npairs > LAZY_START) // enable lazy constraints
+    env.set(GRB_IntParam_LazyConstraints, 1);
   GRBModel model = GRBModel(env);
   model.set(GRB_StringAttr_ModelName, "Pickup Delivery Route");
   model.set(GRB_IntAttr_ModelSense, GRB_MINIMIZE);
@@ -123,7 +172,8 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   cout << "-> the in/out-degree of each internal node is one - " << constrCount << " constrs" << endl;
 
   unsigned M = P.nnodes;
-  if (P.npairs <= 10) { // adds all the restriction only on small instances
+  SubCycleElim cb(M, P, p_v, x_e);
+  if (P.npairs <= LAZY_START) { // adds all the restriction only on small instances
     constrCount = 0;
     for (ArcIt e(P.g); e != INVALID; ++e, constrCount += 2) {
       // Arcs only between adjacent nodes:
@@ -134,6 +184,7 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
     }
     cout << "-> arcs only between adjacent nodes - " << constrCount << " constrs" << endl;
   } else { // create a callback for dynamic restriction creation
+    model.setCallback(&cb);
     cout << "-> arcs only between adjacent nodes - adding a callback" << endl;
   }
 
