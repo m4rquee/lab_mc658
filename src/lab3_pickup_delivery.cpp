@@ -24,7 +24,7 @@ public:
       : P(p), x_e(x_e) {}
 
 protected:
-  void callback() {
+  void callback() override {
     // -------------------------------------------------------------------------
     // Get the correct function to obtain the values of the lp variables:
     if (where == GRB_CB_MIPSOL) // if this condition is true, all variables are integer
@@ -153,6 +153,7 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
 
   // ILP solving: --------------------------------------------------------------
   model.optimize(); // trys to solve optimally within the time limit
+  LB = max(LB, model.get(GRB_DoubleAttr_ObjBound)); // updates the LB
   if (model.get(GRB_IntAttr_SolCount) > 0) {  // a better solution was found
     improved = true;
     UB = GetModelValue(model);
@@ -163,6 +164,7 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
       local_search(P, LB, UB, Sol);
     NEW_UB_MESSAGE(Sol);
   }
+  cout << "Novo LB - " << LB << endl;
 
   return improved;
 }
