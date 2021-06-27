@@ -62,8 +62,10 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   model.update(); // run update to use model inserted variables
 
   // ILP problem restrictions: -------------------------------------------------
+  cout << "Adding the model restrictions:" << endl;
+  int constrCount = 0;
   vector<GRBLinExpr> pos_unique_node_expr(P.nnodes);
-  for (DNodeIt v(P.g); v != INVALID; ++v) {
+  for (DNodeIt v(P.g); v != INVALID; ++v, constrCount++) {
     GRBLinExpr node_unique_pos_expr;
     for (int pos = 0; pos < P.nnodes; pos++) {
       node_unique_pos_expr += x_vi[v][pos];
@@ -71,6 +73,8 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
     }
     model.addConstr(node_unique_pos_expr == 1); // each node must be in a single position
   }
+  cout << "-> each node must be in a single position - " << constrCount << " constrs" << endl;
+  cout << "-> each position must contain a single node - " << constrCount << " constrs" << endl;
   for (int pos = 0; pos < P.nnodes; pos++)
     model.addConstr(pos_unique_node_expr[pos] == 1); // each position must contain a single node
 
@@ -80,16 +84,23 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   model.addConstr(p_v[P.target] == P.nnodes - 1);
   model.addConstr(x_vi[P.target][P.nnodes - 1] == 1);
 
+  constrCount = 0;
   for (DNodeIt v(P.g); v != INVALID; ++v) {
     if (v == P.source or v == P.target) continue; // they are already fixed
     GRBLinExpr pv_and_x_vi_link_expr;
     for (int pos = 0; pos < P.nnodes; pos++)
       pv_and_x_vi_link_expr += pos * x_vi[v][pos];
     model.addConstr(p_v[v] == pv_and_x_vi_link_expr); // the two position representations must agree
+    constrCount++;
   }
+  cout << "-> the two position representations must agree - " << constrCount << " constrs" << endl;
 
-  for (const auto &delivery : P.delivery)
+  constrCount = 0;
+  for (const auto &delivery : P.delivery) {
     model.addConstr(p_v[P.del_pickup[delivery]] <= p_v[delivery] - 1); // the ith pickup shows up before the ith delivery
+    constrCount++;
+  }
+  cout << "-> the ith pickup shows up before the ith delivery - " << constrCount << " constrs" << endl;
 
   GRBLinExpr s_out_degree_expr;
   for (OutArcIt e(P.g, P.source); e != INVALID; ++e) s_out_degree_expr += x_e[e];
@@ -98,6 +109,7 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   for (InArcIt e(P.g, P.target); e != INVALID; ++e) t_in_degree_expr += x_e[e];
   model.addConstr(t_in_degree_expr == 1); // the target is the last node
 
+  constrCount = 0;
   for (DNodeIt v(P.g); v != INVALID; ++v) {
     if (v == P.source or v == P.target) continue;
     GRBLinExpr out_degree_expr, in_degree_expr;
@@ -106,16 +118,27 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
     // The in/out-degree of each internal node is one:
     model.addConstr(out_degree_expr == 1);
     model.addConstr(in_degree_expr == 1);
+    constrCount += 2;
   }
+  cout << "-> the in/out-degree of each internal node is one - " << constrCount << " constrs" << endl;
 
   unsigned M = P.nnodes;
-  for (ArcIt e(P.g); e != INVALID; ++e) {
-    // Arcs only between adjacent nodes:
-    model.addConstr(p_v[P.g.target(e)] - p_v[P.g.source(e)] + M * (1 - x_e[e]) >= x_e[e]);
-    model.addConstr(p_v[P.g.target(e)] - p_v[P.g.source(e)] - M * (1 - x_e[e]) <= x_e[e]);
+  if (P.npairs <= 10) { // adds all the restriction only on small instances
+    constrCount = 0;
+    for (ArcIt e(P.g); e != INVALID; ++e, constrCount += 2) {
+      // Arcs only between adjacent nodes:
+      model.addConstr(
+          p_v[P.g.target(e)] - p_v[P.g.source(e)] + M * (1 - x_e[e]) >= x_e[e]);
+      model.addConstr(
+          p_v[P.g.target(e)] - p_v[P.g.source(e)] - M * (1 - x_e[e]) <= x_e[e]);
+    }
+    cout << "-> arcs only between adjacent nodes - " << constrCount << " constrs" << endl;
+  } else { // create a callback for dynamic restriction creation
+    cout << "-> arcs only between adjacent nodes - adding a callback" << endl;
   }
 
   model.addConstr(LB_expr >= LB, "cost >= LB"); // imposed LB
+  cout << "-> other - " << 7 << " constrs" << endl;
 
   // ILP solving: --------------------------------------------------------------
   model.optimize(); // trys to solve optimally within the time limit
