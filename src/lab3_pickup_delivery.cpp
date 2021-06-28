@@ -12,6 +12,7 @@
 #include <solver.h>
 #include <string>
 
+#define LAZY_ADD 100
 const long unsigned seed = 42; // seed to the random number generator
 
 class SubCycleElim : public GRBCallback {
@@ -45,6 +46,7 @@ protected:
       // From the source we must reach all pickups: ----------------------------
       // It must reach the deliveries too, but this is achieved in the next for.
       // The target is always an end node of a path, so it's save to ignore it here.
+      int constrCount = 0;
       for (auto &pickup : P.pickup) {
         double vcut = DiMinCut(P.g, capacity, P.source, pickup, cut);
         if (vcut >= 1.0 - MY_EPS) continue; // else: found violated cut
@@ -54,9 +56,11 @@ protected:
               cut[P.g.target(e)] == cut[pickup]) // if is a cut crossing arc
             expr += x_e[e];
         addLazy(expr >= 1.0); // eliminates this violation
+        if (++constrCount >= LAZY_ADD) break; // limit the number of added constr
       }
 
       // From a pickup we must reach its delivery: -----------------------------
+      constrCount = 0;
       for (auto &delivery : P.delivery) {
         DNode &pickup = P.del_pickup[delivery];
         double vcut = DiMinCut(P.g, capacity, pickup, delivery, cut);
@@ -67,6 +71,7 @@ protected:
               cut[P.g.target(e)] == cut[delivery]) // if is a cut crossing arc
             expr += x_e[e];
         addLazy(expr >= 1.0); // eliminates this violation
+        if (++constrCount >= LAZY_ADD) break; // limit the number of added constr
       }
     } catch (std::exception &e) {
       cout << "Error during callback: " << e.what() << endl;
@@ -149,7 +154,7 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   model.setCallback(&cb);
   cout << "-> arcs only between adjacent nodes - adding a callback" << endl;
   model.addConstr(LB_expr >= LB, "cost >= LB"); // imposed LB
-  cout << "-> other - " << 7 << " constrs" << endl;
+  cout << "-> other - " << 3 << " constrs" << endl;
 
   // ILP solving: --------------------------------------------------------------
   model.optimize(); // trys to solve optimally within the time limit
