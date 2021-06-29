@@ -184,6 +184,8 @@ bool can_swap(Pickup_Delivery_Instance &P, DNodeVector &Sol, int i, int j) {
       if (!P.is_pickup[Sol[k]] and Sol[i] == P.del_pickup[Sol[k]])
         return false; // i is delivered at k
   } else if (i_is_pickup and !j_is_pickup) {
+    if (i == 1) return false; // must start with a pickup
+    if (j == P.nnodes - 2) return false; // must end with a delivery
     if (Sol[i] == P.del_pickup[Sol[j]]) return false; // i is delivered at j
     for (int k = i + 1; k < j; k++)
       if ((!P.is_pickup[Sol[k]] and Sol[i] == P.del_pickup[Sol[k]]) or
