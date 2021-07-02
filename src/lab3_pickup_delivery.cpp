@@ -53,17 +53,17 @@ protected:
       for (ArcIt e(P.g); e != INVALID; ++e) // saves all arcs values
         capacity[e] = (this->*solution_value)(x_e[e]);
 
-      // From the source we must reach all pickups: ----------------------------
-      // It must reach the deliveries too, but this is achieved in the next for.
+      // From the source we must reach all deliveries: -------------------------
+      // It must reach the pickups too, but this is achieved in the next for.
       // The target is always an end node of a path, so it's save to ignore it here.
       int constrCount = 0;
-      for (auto &pickup : P.pickup) {
-        double vcut = doDiMinCut(P.source, pickup);
+      for (auto &delivery : P.delivery) {
+        double vcut = doDiMinCut(P.source, delivery);
         if (vcut >= 1.0 - MY_EPS) continue; // else: found violated cut
         GRBLinExpr expr;
         for (ArcIt e(P.g); e != INVALID; ++e)
           if (cut[P.g.source(e)] == cut[P.source] &&
-              cut[P.g.target(e)] == cut[pickup]) // if is a cut crossing arc
+              cut[P.g.target(e)] == cut[delivery]) // if is a cut crossing arc
             expr += x_e[e];
         addLazy(expr >= 1.0); // eliminates this violation
         if (++constrCount >= LAZY_ADD) break; // limit the number of added constr
