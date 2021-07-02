@@ -70,6 +70,7 @@ protected:
       }
 
       // From a pickup we must reach its delivery: -----------------------------
+      // With its degrees restricted, pickups are them reachable by the source.
       constrCount = 0;
       for (auto &delivery : P.delivery) {
         DNode &pickup = P.del_pickup[delivery];
@@ -132,7 +133,7 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
     model.set(GRB_IntParam_Threads, 1);
   }
 
-  if (P.npairs > 25) { // focus only on new UBs
+  if (P.npairs >= 20) { // focus only on new UBs
     model.set(GRB_IntParam_MIPFocus, GRB_MIPFOCUS_FEASIBILITY);
     model.set(GRB_IntParam_Cuts, GRB_CUTS_AGGRESSIVE);
     model.set(GRB_IntParam_Presolve, GRB_PRESOLVE_AGGRESSIVE);
@@ -140,9 +141,6 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
     model.set(GRB_IntParam_PumpPasses, 5000);
     model.set(GRB_IntParam_ZeroObjNodes, 500);
     model.set(GRB_DoubleParam_Heuristics, 0.3);
-  } else { // focus on new LBs
-    model.set(GRB_IntParam_MIPFocus, GRB_MIPFOCUS_BESTBOUND);
-    model.set(GRB_DoubleParam_ImproveStartTime, 300); // after 5min focus on new UBs
   }
 
   // ILP problem variables: ----------------------------------------------------
