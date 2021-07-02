@@ -27,7 +27,6 @@ struct ArcCmp : public binary_function<Arc, Arc, bool> {
 
   explicit ArcCmp(ArcValueMap &weight) : weight(weight) {}
 
-  _GLIBCXX14_CONSTEXPR
   inline bool operator()(const Arc &x, const Arc &y) const {
     return weight[x] > weight[y]; // acceding order
   }

@@ -19,12 +19,25 @@ class SubCycleElim : public GRBCallback {
   Pickup_Delivery_Instance &P;
   Digraph::ArcMap<GRBVar> &x_e;
   double (GRBCallback::*solution_value)(GRBVar) = nullptr;
+  DCutMap cut;
+  ArcValueMap capacity;
+  DiPFType preflow_solver;
 
 public:
   SubCycleElim(Pickup_Delivery_Instance &p, Digraph::ArcMap<GRBVar> &x_e)
-      : P(p), x_e(x_e) {}
+      : P(p), x_e(x_e), cut(P.g), capacity(P.g),
+        preflow_solver(P.g, capacity, P.source, P.target) {
+    preflow_solver.tolerance(DefDiTol);
+  }
 
 protected:
+  inline double doDiMinCut(DNode &source, DNode &target) {
+    preflow_solver.source(source).target(target);
+    preflow_solver.runMinCut();
+    preflow_solver.minCutMap(cut);
+    return preflow_solver.flowValue();
+  }
+
   void callback() override {
     // -------------------------------------------------------------------------
     // Get the correct function to obtain the values of the lp variables:
@@ -37,9 +50,6 @@ protected:
       return; // return, as this code do not take advantage of the other options
 
     try {
-      ArcValueMap capacity(P.g);
-      DCutMap cut(P.g);
-
       for (ArcIt e(P.g); e != INVALID; ++e) // saves all arcs values
         capacity[e] = (this->*solution_value)(x_e[e]);
 
@@ -48,7 +58,7 @@ protected:
       // The target is always an end node of a path, so it's save to ignore it here.
       int constrCount = 0;
       for (auto &pickup : P.pickup) {
-        double vcut = DiMinCut(P.g, capacity, P.source, pickup, cut);
+        double vcut = doDiMinCut(P.source, pickup);
         if (vcut >= 1.0 - MY_EPS) continue; // else: found violated cut
         GRBLinExpr expr;
         for (ArcIt e(P.g); e != INVALID; ++e)
@@ -63,7 +73,7 @@ protected:
       constrCount = 0;
       for (auto &delivery : P.delivery) {
         DNode &pickup = P.del_pickup[delivery];
-        double vcut = DiMinCut(P.g, capacity, pickup, delivery, cut);
+        double vcut = doDiMinCut(pickup, delivery);
         if (vcut >= 1.0 - MY_EPS) continue; // else: found violated cut
         GRBLinExpr expr;
         for (ArcIt e(P.g); e != INVALID; ++e)
