@@ -758,7 +758,7 @@ double DiMinCut(Digraph &g, ArcValueMap &weight, DNode &s,DNode &t, DCutMap &vcu
 {
   DiPFType preflow_test(g, weight, s, t);
   preflow_test.tolerance(DefDiTol);
-  preflow_test.run();
+  preflow_test.runMinCut();
   preflow_test.minCutMap(vcut);
   return (preflow_test.flowValue());
 }
