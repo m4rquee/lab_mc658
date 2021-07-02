@@ -191,8 +191,11 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
     translate_sol(P, Sol, x_e); // saves this better solution
     if (model.get(GRB_IntAttr_Status) == GRB_OPTIMAL) // solved optimally
       LB = UB;
-    else // can still improve
+    else { // can still improve
+      NEW_UB_MESSAGE(Sol); // print the ILP solution
+      cout << endl;
       local_search(P, LB, UB, Sol);
+    }
     NEW_UB_MESSAGE(Sol);
   }
   cout << "Novo LB - " << LB << endl;
