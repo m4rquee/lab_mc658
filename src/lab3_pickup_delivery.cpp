@@ -147,13 +147,11 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
 
   // ILP problem variables: ----------------------------------------------------
   Digraph::ArcMap<GRBVar> x_e(P.g); // binary variables for each arc
-  GRBLinExpr LB_expr;
   for (ArcIt e(P.g); e != INVALID; ++e) {
     char name[100];
     sprintf(name, "x_(%s,%s)", P.vname[P.g.source(e)].c_str(),
             P.vname[P.g.target(e)].c_str());
     x_e[e] = model.addVar(0.0, 1.0, P.weight[e], GRB_BINARY, name);
-    LB_expr += P.weight[e] * x_e[e];
   }
   model.update(); // run update to use model inserted variables
 
@@ -182,8 +180,7 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   SubCycleElim cb(P, x_e);
   model.setCallback(&cb);
   cout << "-> arcs only between adjacent nodes - adding a callback" << endl;
-  model.addConstr(LB_expr >= LB, "cost >= LB"); // imposed LB
-  cout << "-> other - " << 3 << " constrs" << endl;
+  cout << "-> other - " << 2 << " constrs" << endl;
 
   // ILP solving: --------------------------------------------------------------
   model.optimize(); // trys to solve optimally within the time limit
