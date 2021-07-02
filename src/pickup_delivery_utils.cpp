@@ -292,7 +292,8 @@ void _arborescence_transversal(Pickup_Delivery_Instance &P, MinCostArb &solver,
 
   // Choose the min arc giving preference to the restricted one:
   DNode &nextNode = min_next;
-  if (min_cost_arb != MY_INF && min_cost_arb <= min_cost * EPS)
+  double eps = EPS_MIN + (EPS_MAX - EPS_MIN) * pos / (2 * P.npairs - 1); // linear from min to max
+  if (min_cost_arb != MY_INF && min_cost_arb <= min_cost * eps)
     nextNode = min_next_arb;
   _arborescence_transversal(P, solver, Sol, nextNode, visited, p_visited, ++pos);
 }

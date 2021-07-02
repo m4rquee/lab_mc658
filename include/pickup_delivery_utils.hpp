@@ -7,7 +7,8 @@
 #include <queue>
 #include <lemon/min_cost_arborescence.h>
 
-#define EPS 2.0
+#define EPS_MIN 1.0
+#define EPS_MAX 5.0
 #define ELAPSED ((chrono::system_clock::now() - P.start).count() / 1E9)
 #define _NEW_UB_MESSAGE(SOL, MSG) {                                            \
     PrintSolution(P, SOL, MSG);                                                \
