@@ -132,6 +132,19 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
     model.set(GRB_IntParam_Threads, 1);
   }
 
+  if (P.npairs > 25) { // focus only on new UBs
+    model.set(GRB_IntParam_MIPFocus, GRB_MIPFOCUS_FEASIBILITY);
+    model.set(GRB_IntParam_Cuts, GRB_CUTS_AGGRESSIVE);
+    model.set(GRB_IntParam_Presolve, GRB_PRESOLVE_AGGRESSIVE);
+    model.set(GRB_IntParam_MinRelNodes, 500);
+    model.set(GRB_IntParam_PumpPasses, 5000);
+    model.set(GRB_IntParam_ZeroObjNodes, 500);
+    model.set(GRB_DoubleParam_Heuristics, 0.3);
+  } else { // focus on new LBs
+    model.set(GRB_IntParam_MIPFocus, GRB_MIPFOCUS_BESTBOUND);
+    model.set(GRB_DoubleParam_ImproveStartTime, 300); // after 5min focus on new UBs
+  }
+
   // ILP problem variables: ----------------------------------------------------
   Digraph::ArcMap<GRBVar> x_e(P.g); // binary variables for each arc
   GRBLinExpr LB_expr;
