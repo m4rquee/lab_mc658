@@ -126,6 +126,12 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   model.set(GRB_StringAttr_ModelName, "Pickup Delivery Route");
   model.set(GRB_IntAttr_ModelSense, GRB_MINIMIZE);
 
+  // ILP solver parameters: ----------------------------------------------------
+  if (P.npairs >= 100) { // reduce memory usage
+    LAZY_ADD = 100;
+    model.set(GRB_IntParam_Threads, 1);
+  }
+
   // ILP problem variables: ----------------------------------------------------
   Digraph::ArcMap<GRBVar> x_e(P.g); // binary variables for each arc
   GRBLinExpr LB_expr;
