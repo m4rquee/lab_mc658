@@ -12,7 +12,7 @@
 #include <solver.h>
 #include <string>
 
-#define LAZY_ADD 100
+int LAZY_ADD = INT32_MAX; // saves memory by limiting the calls to addLazy
 const long unsigned seed = 42; // seed to the random number generator
 
 class SubCycleElim : public GRBCallback {
