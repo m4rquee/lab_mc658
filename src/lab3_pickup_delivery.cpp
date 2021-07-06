@@ -138,7 +138,9 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   model.addConstr(t_in_degree_expr == 1); // the target is the last node
 
   constrCount = 0;
+  GRBLinExpr pos_sum_expr;
   for (DNodeIt v(P.g); v != INVALID; ++v) {
+    pos_sum_expr += p_v[v];
     if (v == P.source or v == P.target) continue;
     GRBLinExpr out_degree_expr, in_degree_expr;
     for (OutArcIt e(P.g, v); e != INVALID; ++e) out_degree_expr += x_e[e];
@@ -149,12 +151,14 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
     constrCount += 2;
   }
   cout << "-> the in/out-degree of each internal node is one - " << constrCount << " constrs" << endl;
+  int pos_sum = (P.nnodes - 1) * P.nnodes / 2;
+  model.addConstr(pos_sum_expr == pos_sum);
 
   unsigned M = P.nnodes;
   SubCycleElim cb(P, x_e, p_v, M);
   model.setCallback(&cb);
   cout << "-> arcs only between adjacent nodes - adding a callback" << endl;
-  cout << "-> other - " << 4 << " constrs" << endl;
+  cout << "-> other - " << 5 << " constrs" << endl;
 
   // ILP solving: --------------------------------------------------------------
   model.optimize(); // trys to solve optimally within the time limit
