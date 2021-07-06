@@ -103,7 +103,6 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   // ILP problem variables: ----------------------------------------------------
   Digraph::ArcMap<GRBVar> x_e(P.g); // binary variables for each arc
   // Binary variables that indicates if a node is in a position:
-  Digraph::NodeMap<map<unsigned, GRBVar>> x_vi(P.g);
   Digraph::NodeMap<GRBVar> p_v(P.g); // position of each node in the solution
   for (ArcIt e(P.g); e != INVALID; ++e) {
     char name[100];
@@ -115,48 +114,16 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
     char name[100];
     sprintf(name, "p_%s", P.vname[v].c_str());
     p_v[v] = model.addVar(0.0, P.nnodes - 1, 0, GRB_INTEGER, name);
-    for (int pos = 0; pos < P.nnodes; pos++) {
-      sprintf(name, "x_%s_%d", P.vname[v].c_str(), pos);
-      x_vi[v][pos] = model.addVar(0.0, 1.0, 0, GRB_BINARY, name);
-    }
   }
   model.update(); // run update to use model inserted variables
 
   // ILP problem restrictions: -------------------------------------------------
   cout << "Adding the model restrictions:" << endl;
-  int constrCount = 0;
-  vector<GRBLinExpr> pos_unique_node_expr(P.nnodes);
-  for (DNodeIt v(P.g); v != INVALID; ++v, constrCount++) {
-    GRBLinExpr node_unique_pos_expr;
-    for (int pos = 0; pos < P.nnodes; pos++) {
-      node_unique_pos_expr += x_vi[v][pos];
-      pos_unique_node_expr[pos] += x_vi[v][pos];
-    }
-    model.addConstr(node_unique_pos_expr == 1); // each node must be in a single position
-  }
-  cout << "-> each node must be in a single position - " << constrCount << " constrs" << endl;
-  cout << "-> each position must contain a single node - " << constrCount << " constrs" << endl;
-  for (int pos = 0; pos < P.nnodes; pos++)
-    model.addConstr(pos_unique_node_expr[pos] == 1); // each position must contain a single node
-
   // The source and the target are fixed:
   model.addConstr(p_v[P.source] == 0);
-  model.addConstr(x_vi[P.source][0] == 1);
   model.addConstr(p_v[P.target] == P.nnodes - 1);
-  model.addConstr(x_vi[P.target][P.nnodes - 1] == 1);
 
-  constrCount = 0;
-  for (DNodeIt v(P.g); v != INVALID; ++v) {
-    if (v == P.source or v == P.target) continue; // they are already fixed
-    GRBLinExpr pv_and_x_vi_link_expr;
-    for (int pos = 0; pos < P.nnodes; pos++)
-      pv_and_x_vi_link_expr += pos * x_vi[v][pos];
-    model.addConstr(p_v[v] == pv_and_x_vi_link_expr); // the two position representations must agree
-    constrCount++;
-  }
-  cout << "-> the two position representations must agree - " << constrCount << " constrs" << endl;
-
-  constrCount = 0;
+  int constrCount = 0;
   for (const auto &delivery : P.delivery) {
     model.addConstr(p_v[P.del_pickup[delivery]] <= p_v[delivery] - 1); // the ith pickup shows up before the ith delivery
     constrCount++;
@@ -187,7 +154,7 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   SubCycleElim cb(P, x_e, p_v, M);
   model.setCallback(&cb);
   cout << "-> arcs only between adjacent nodes - adding a callback" << endl;
-  cout << "-> other - " << 6 << " constrs" << endl;
+  cout << "-> other - " << 4 << " constrs" << endl;
 
   // ILP solving: --------------------------------------------------------------
   model.optimize(); // trys to solve optimally within the time limit
