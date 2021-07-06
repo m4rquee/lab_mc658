@@ -16,28 +16,18 @@ int LAZY_ADD = INT32_MAX; // saves memory by limiting the calls to addLazy
 const long unsigned seed = 42; // seed to the random number generator
 
 class SubCycleElim : public GRBCallback {
+  const unsigned &M;
   Pickup_Delivery_Instance &P;
   Digraph::ArcMap<GRBVar> &x_e;
+  Digraph::NodeMap<GRBVar> &p_v;
   double (GRBCallback::*solution_value)(GRBVar) = nullptr;
-  DCutMap cut;
-  ArcValueMap capacity;
-  DiPFType preflow_solver;
 
 public:
-  SubCycleElim(Pickup_Delivery_Instance &p, Digraph::ArcMap<GRBVar> &x_e)
-      : P(p), x_e(x_e), cut(P.g), capacity(P.g),
-        preflow_solver(P.g, capacity, P.source, P.target) {
-    preflow_solver.tolerance(DefDiTol);
-  }
+  SubCycleElim(Pickup_Delivery_Instance &p, Digraph::ArcMap<GRBVar> &x_e,
+               Digraph::NodeMap<GRBVar> &p_v, const unsigned int &m)
+      : M(m), P(p), x_e(x_e), p_v(p_v) {}
 
 protected:
-  inline double doDiMinCut(DNode &source, DNode &target) {
-    preflow_solver.source(source).target(target);
-    preflow_solver.runMinCut();
-    preflow_solver.minCutMap(cut);
-    return preflow_solver.flowValue();
-  }
-
   void callback() override {
     // -------------------------------------------------------------------------
     // Get the correct function to obtain the values of the lp variables:
@@ -50,39 +40,19 @@ protected:
       return; // return, as this code do not take advantage of the other options
 
     try {
-      for (ArcIt e(P.g); e != INVALID; ++e) // saves all arcs values
-        capacity[e] = (this->*solution_value)(x_e[e]);
-
-      // From the source we must reach all deliveries: -------------------------
-      // It must reach the pickups too, but this is achieved in the next for.
-      // The target is always an end node of a path, so it's save to ignore it here.
       int constrCount = 0;
-      for (auto &delivery : P.delivery) {
-        double vcut = doDiMinCut(P.source, delivery);
-        if (vcut >= 1.0 - MY_EPS) continue; // else: found violated cut
-        GRBLinExpr expr;
-        for (ArcIt e(P.g); e != INVALID; ++e)
-          if (cut[P.g.source(e)] == cut[P.source] &&
-              cut[P.g.target(e)] == cut[delivery]) // if is a cut crossing arc
-            expr += x_e[e];
-        addLazy(expr >= 1.0); // eliminates this violation
-        if (++constrCount >= LAZY_ADD) break; // limit the number of added constr
-      }
-
-      // From a pickup we must reach its delivery: -----------------------------
-      // With its degrees restricted, pickups are them reachable by the source.
-      constrCount = 0;
-      for (auto &delivery : P.delivery) {
-        DNode &pickup = P.del_pickup[delivery];
-        double vcut = doDiMinCut(pickup, delivery);
-        if (vcut >= 1.0 - MY_EPS) continue; // else: found violated cut
-        GRBLinExpr expr;
-        for (ArcIt e(P.g); e != INVALID; ++e)
-          if (cut[P.g.source(e)] == cut[pickup] &&
-              cut[P.g.target(e)] == cut[delivery]) // if is a cut crossing arc
-            expr += x_e[e];
-        addLazy(expr >= 1.0); // eliminates this violation
-        if (++constrCount >= LAZY_ADD) break; // limit the number of added constr
+      for (ArcIt e(P.g); e != INVALID; ++e) {
+        const DNode &u = P.g.source(e), &v = P.g.target(e);
+        const int u_pos = (int)std::round((this->*solution_value)(p_v[u])),
+                  v_pos = (int)std::round((this->*solution_value)(p_v[v]));
+        if ((this->*solution_value)(x_e[e]) > 1 - MY_EPS) // this edge is used
+          if (abs(v_pos - u_pos) > 1 - MY_EPS) { // arc between nonadjacent nodes
+            // Arcs only between adjacent nodes:
+            addLazy(p_v[v] - p_v[u] + M * (1 - x_e[e]) >= x_e[e]);
+            addLazy(p_v[v] - p_v[u] - M * (1 - x_e[e]) <= x_e[e]);
+            constrCount += 2;
+            if (constrCount >= LAZY_ADD) break; // adds up to LAZY_ADD restrictions
+          }
       }
     } catch (std::exception &e) {
       cout << "Error during callback: " << e.what() << endl;
@@ -98,19 +68,6 @@ inline bool arb_heuristic(Pickup_Delivery_Instance &P, double &LB, double &UB, D
   LB = max(LB, arb_solver.arborescenceCost());
   bool improved = arborescence_heuristic(P, LB, UB, Sol, arb_solver);
   return local_search(P, LB, UB, Sol) or improved;
-}
-
-void translate_sol(Pickup_Delivery_Instance &P, DNodeVector &Sol,
-                   Digraph::ArcMap<GRBVar> &x_e) {
-  Sol[0] = P.source;
-  Sol[P.nnodes - 1] = P.target;
-  for (int i = 1; i < P.nnodes - 1; i++)
-    for (ArcIt e(P.g); e != INVALID; ++e)
-      if (x_e[e].get(GRB_DoubleAttr_X) >= 1 - MY_EPS) // this arc is used
-        if (P.g.source(e) == Sol[i - 1]) {
-          Sol[i] = P.g.target(e);
-          break;
-        }
 }
 
 bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol) {
@@ -145,16 +102,67 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
 
   // ILP problem variables: ----------------------------------------------------
   Digraph::ArcMap<GRBVar> x_e(P.g); // binary variables for each arc
+  // Binary variables that indicates if a node is in a position:
+  Digraph::NodeMap<map<unsigned, GRBVar>> x_vi(P.g);
+  Digraph::NodeMap<GRBVar> p_v(P.g); // position of each node in the solution
   for (ArcIt e(P.g); e != INVALID; ++e) {
     char name[100];
     sprintf(name, "x_(%s,%s)", P.vname[P.g.source(e)].c_str(),
             P.vname[P.g.target(e)].c_str());
     x_e[e] = model.addVar(0.0, 1.0, P.weight[e], GRB_BINARY, name);
   }
+  for (DNodeIt v(P.g); v != INVALID; ++v) {
+    char name[100];
+    sprintf(name, "p_%s", P.vname[v].c_str());
+    p_v[v] = model.addVar(0.0, P.nnodes - 1, 0, GRB_INTEGER, name);
+    for (int pos = 0; pos < P.nnodes; pos++) {
+      sprintf(name, "x_%s_%d", P.vname[v].c_str(), pos);
+      x_vi[v][pos] = model.addVar(0.0, 1.0, 0, GRB_BINARY, name);
+    }
+  }
   model.update(); // run update to use model inserted variables
 
   // ILP problem restrictions: -------------------------------------------------
   cout << "Adding the model restrictions:" << endl;
+  int constrCount = 0;
+  vector<GRBLinExpr> pos_unique_node_expr(P.nnodes);
+  for (DNodeIt v(P.g); v != INVALID; ++v, constrCount++) {
+    GRBLinExpr node_unique_pos_expr;
+    for (int pos = 0; pos < P.nnodes; pos++) {
+      node_unique_pos_expr += x_vi[v][pos];
+      pos_unique_node_expr[pos] += x_vi[v][pos];
+    }
+    model.addConstr(node_unique_pos_expr == 1); // each node must be in a single position
+  }
+  cout << "-> each node must be in a single position - " << constrCount << " constrs" << endl;
+  cout << "-> each position must contain a single node - " << constrCount << " constrs" << endl;
+  for (int pos = 0; pos < P.nnodes; pos++)
+    model.addConstr(pos_unique_node_expr[pos] == 1); // each position must contain a single node
+
+  // The source and the target are fixed:
+  model.addConstr(p_v[P.source] == 0);
+  model.addConstr(x_vi[P.source][0] == 1);
+  model.addConstr(p_v[P.target] == P.nnodes - 1);
+  model.addConstr(x_vi[P.target][P.nnodes - 1] == 1);
+
+  constrCount = 0;
+  for (DNodeIt v(P.g); v != INVALID; ++v) {
+    if (v == P.source or v == P.target) continue; // they are already fixed
+    GRBLinExpr pv_and_x_vi_link_expr;
+    for (int pos = 0; pos < P.nnodes; pos++)
+      pv_and_x_vi_link_expr += pos * x_vi[v][pos];
+    model.addConstr(p_v[v] == pv_and_x_vi_link_expr); // the two position representations must agree
+    constrCount++;
+  }
+  cout << "-> the two position representations must agree - " << constrCount << " constrs" << endl;
+
+  constrCount = 0;
+  for (const auto &delivery : P.delivery) {
+    model.addConstr(p_v[P.del_pickup[delivery]] <= p_v[delivery] - 1); // the ith pickup shows up before the ith delivery
+    constrCount++;
+  }
+  cout << "-> the ith pickup shows up before the ith delivery - " << constrCount << " constrs" << endl;
+
   GRBLinExpr s_out_degree_expr;
   for (OutArcIt e(P.g, P.source); e != INVALID; ++e) s_out_degree_expr += x_e[e];
   model.addConstr(s_out_degree_expr == 1); // the source is the first node
@@ -162,7 +170,7 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   for (InArcIt e(P.g, P.target); e != INVALID; ++e) t_in_degree_expr += x_e[e];
   model.addConstr(t_in_degree_expr == 1); // the target is the last node
 
-  int constrCount = 0;
+  constrCount = 0;
   for (DNodeIt v(P.g); v != INVALID; ++v) {
     if (v == P.source or v == P.target) continue;
     GRBLinExpr out_degree_expr, in_degree_expr;
@@ -175,10 +183,11 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   }
   cout << "-> the in/out-degree of each internal node is one - " << constrCount << " constrs" << endl;
 
-  SubCycleElim cb(P, x_e);
+  unsigned M = P.nnodes;
+  SubCycleElim cb(P, x_e, p_v, M);
   model.setCallback(&cb);
   cout << "-> arcs only between adjacent nodes - adding a callback" << endl;
-  cout << "-> other - " << 2 << " constrs" << endl;
+  cout << "-> other - " << 6 << " constrs" << endl;
 
   // ILP solving: --------------------------------------------------------------
   model.optimize(); // trys to solve optimally within the time limit
@@ -186,7 +195,8 @@ bool Lab3(Pickup_Delivery_Instance &P, double &LB, double &UB, DNodeVector &Sol)
   if (model.get(GRB_IntAttr_SolCount) > 0) {  // a better solution was found
     improved = true;
     UB = GetModelValue(model);
-    translate_sol(P, Sol, x_e); // saves this better solution
+    for (DNodeIt v(P.g); v != INVALID; ++v) // saves this better solution
+      Sol[(unsigned)std::round(p_v[v].get(GRB_DoubleAttr_X))] = v;
     if (model.get(GRB_IntAttr_Status) == GRB_OPTIMAL) // solved optimally
       LB = UB;
     else { // can still improve
